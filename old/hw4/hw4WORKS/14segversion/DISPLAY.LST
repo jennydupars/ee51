@@ -1,0 +1,621 @@
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    1
+
+
+DOS 5.0 (038-N) 8086/87/88/186 MACRO ASSEMBLER V3.1 ASSEMBLY OF MODULE DISPLAY
+OBJECT MODULE PLACED IN DISPLAY.OBJ
+ASSEMBLER INVOKED BY:  C:\UTIL\ASM86.EXE DISPLAY.ASM M1 DB EP
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                             1             NAME            DISPLAY
+                             2     
+                             3     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             4     ;                                                                            ;
+                             5     ;                                                                   DISPLAY    - 14 s
+                                   eg                              ;
+                             6     ;                                  Homework 4                                    ;
+                             7     ;                                   EE/CS 51                                 ;
+                             8     ;                                                                            ;
+                             9     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                            10     
+                            11     ;
+                            12     ; This file contains the functions for displaying strings on the 14-segment
+                            13     ; displays.  The functions included are:
+                            14     ;   Display        - displays a string to the LED display 
+                            15     ;   DisplayNum     - displays a number as a decimal to the LED display
+                            16     ;   DisplayHex     - displays a number in hexadecimal to the LED display
+                            17     ;   InitDisplay    - initialize the display and its variables
+                            18     ;   DisplayMux     - multiplex the LED display
+                            19     
+                            20     
+                            21     ; Revision History:
+                            22     ;     10/24/16          Jennifer Du      initial revision
+                            23     ;         10/26/16              Jennifer Du              writing assembly code
+                            24     ;
+                            25     
+                            26     
+                            27     
+                            28     ;external function declarations
+                            29         
+                            30             EXTRN   Hex2String:NEAR         ; converts number to hexstring
+                            31                     EXTRN   Dec2String:NEAR         ; converts number to decstring
+                            32             
+                            33             EXTRN   ASCIISegTable:BYTE  ; 14-segment codes for segment buffer 
+                            34                     
+                            35                     
+                            36     
+                            37     ; include files
+                            38 +1  $INCLUDE(display.inc)
+                      =1    39     
+                      =1    40     
+                      =1    41     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    42     ;                                                                            ;
+                      =1    43     ;                                  Display                                   ;
+                      =1    44     ;                                Inlude File                                 ;
+                      =1    45     ;                                  EE/CS 51                                  ;
+                      =1    46     ;                                                                            ;
+                      =1    47     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    48     
+                      =1    49     ; This file contains the assembly language definitions for the display
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    2
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                      =1    50     ; functions for homework 4.
+                      =1    51     
+  0008                =1    52     numDigits       EQU     8d                   ; number of LED digits
+  0008                =1    53     numSegs         EQU     8d                 ; length of segment buffer
+  0010                =1    54     numSegsBytes    EQU     16d                 ; length of segment buffer
+                      =1    55     
+  0008                =1    56     maxDispLength   EQU     8                   ; max ///////////////////////////////////
+                                   /
+                      =1    57     
+  0001                =1    58     ODD_OR_EVEN_BIT_MASK    EQU  0001H          ; compare this to numbers to test if odd 
+                                   or even
+                      =1    59     
+                      =1    60     ; Specific Digit/LED Definitions
+                      =1    61     
+  0000                =1    62     LED_BLANK       EQU     00000000B       ;a blank LED            
+  FFA4                =1    63     IO_LED_LOC      EQU     0FFA4H          ; I/O location of the LED display
+  0000                =1    64     IO_LED_VAL      EQU     0               ; value to write to LED display for correct C
+                                   S
+                      =1    65     
+                      =1    66     ; ASCII constants
+                      =1    67     
+  0000                =1    68     ASCII_NULL      EQU     0000H           ; value of null character 
+  0020                =1    69     ASCII_BLANK     EQU     ' '
+                            70 +1  $INCLUDE(common.inc)
+                      =1    71     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    72     ;                                                                            ;
+                      =1    73     ;                                  COMMON.INC                                ;
+                      =1    74     ;                                   EE/CS 51                                 ;
+                      =1    75     ;                    Include file for commonly used constants                ;
+                      =1    76     ;                                                                            ;
+                      =1    77     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    78     
+                      =1    79     ; This file contains commonly used constants. 
+                      =1    80     
+                      =1    81     ; Word and byte size:
+                      =1    82     
+  0002                =1    83     WORDSIZE        EQU         0002H       ; 1 word is 2 bytes
+  0001                =1    84     BYTESIZE        EQU         0001H       ; 1 byte is 1 byte 
+                            85 +1  $INCLUDE(converts.inc)
+                      =1    86     
+                      =1    87     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    88     ;                                                                            ;
+                      =1    89     ;                                  CONVERTS.INC                              ;
+                      =1    90     ;                               Conversion Functions                         ;
+                      =1    91     ;                                  Include File                              ;
+                      =1    92     ;                                                                            ;
+                      =1    93     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    94     
+                      =1    95     ;This file contains the non-magic numbers for convert.
+                      =1    96     
+                      =1    97     ; constants used in both:
+                      =1    98     
+  0041                =1    99     ASCIIa          EQU             65          ; ascii value for 'A' 
+  0030                =1   100     ASCII0          EQU             48          ; ascii value for '0' 
+  002D                =1   101     ASCIIdash       EQU     45          ; ascii value for '-'
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    3
+
+
+LOC  OBJ                  LINE     SOURCE
+
+  0000                =1   102     NULL        EQU     0                   ; ascii value for null character
+                      =1   103     
+                      =1   104     ; no magic numbers for BX counter
+  0005                =1   105     bFIVE       EQU     0005H
+  0004                =1   106     bFOUR       EQU     0004H
+  0003                =1   107     bTHREE      EQU     0003H
+  0002                =1   108     bTWO        EQU     0002H
+  0001                =1   109     bONE        EQU     0001H
+  0000                =1   110     ZERO        EQU     0000H
+                      =1   111     
+                      =1   112     
+                      =1   113     
+                      =1   114     ; constants used in Dec2String:
+                      =1   115     
+  2710                =1   116     TENto4      EQU     2710H               ; powers of 10: 10000
+  03E8                =1   117     TENto3      EQU     03E8H               ; powers of 10: 1000
+  0064                =1   118     TENto2      EQU     0064H               ; powers of 10: 100
+  000A                =1   119     TENto1      EQU     000AH               ; powers of 10: 10
+                      =1   120     
+  8000                =1   121     TEST1STBIT    EQU     8000H     ; test first bit for 1 or 0
+                      =1   122     
+                      =1   123     
+                      =1   124     
+                      =1   125     ; constants used in Hex2String:
+                      =1   126     
+  0004                =1   127     FOURBITS        EQU             4                       ; used for shifting 4 bits le
+                                   ft or right
+                      =1   128     
+  F000                =1   129     FIRST4BITS  EQU     0F000H      ; gets first 4 digits of numbers compared to it
+  000A                =1   130     TEN         EQU     000AH       ; for use when comparing numbers to 10
+                           131     
+                           132     
+                           133     
+                           134     CGROUP  GROUP   CODE
+                           135     DGROUP  GROUP   DATA, STACK
+                           136     
+----                       137     CODE    SEGMENT PUBLIC 'CODE'
+                           138     
+                           139             ASSUME  CS:CGROUP, DS:DGROUP, SS:STACK
+                           140     
+                           141                     
+                           142     ; Display 
+                           143     ;
+                           144     ; Description:          This function converts an ASCII string into the 
+                           145     ;                                       series of 14-segment codes that, when ported 
+                                   to the LED 
+                           146     ;                                       display, forms a visual representation of tha
+                                   t string. 
+                           147     ;                                       The function is passed a <null> terminated st
+                                   ring (str) to
+                           148     ;                                       output to the LED display. The string is pass
+                                   ed by 
+                           149     ;                                       reference in ES:SI (i.e. the address of the s
+                                   tring is 
+                           150     ;                                       ES:SI). The maximum length of the string that
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    4
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                                    can be 
+                           151     ;                                       displayed at any given moment is 8 characters
+                                    long. The 
+                           152     ;                   maximum length of a string that can be displayed is 64 
+                           153     ;                   characters. The 8-character display will be able to scroll
+                           154     ;                   through the string, 8 characters at a time.
+                           155     ;
+                           156     ; Operation:            This function will loop through the given string, and look 
+                           157     ;                                       up the 14 segment code for each character in 
+                                   the 14-segment 
+                           158     ;                                       code table. Then it will write the value of t
+                                   he 14 segment 
+                           159     ;                                       code to the buffer in the order that the char
+                                   acters appear. 
+                           160     ;                   If the string is shorter than the length of the segment 
+                           161     ;                   buffer, the buffer will be padded with blank spaces. If the 
+                           162     ;                   string is longer than the length of the segment buffer, it 
+                           163     ;                   will be cut off at the maximum length, 64 characters.  
+                           164     ;
+                           165     ; Arguments:            SI - address of string to be displayed
+                           166     ; Return Value:         None. 
+                           167     ;
+                           168     ; Local Variables:      SI - address of string to be displayed
+                           169     ; Shared Variables: segBuffer - place to store the segment code values  
+                           170     ; Global Variables: None. 
+                           171     ;
+                           172     ; Input:                        None. 
+                           173     ; Output:                       None.
+                           174     ; Error Handling:       None. 
+                           175     ; Algorithms:           None. 
+                           176     ; Data Structures:      The segment buffer is an array of words which holds the 
+                           177     ;                                       14-segment code values for each character in 
+                                   the string 
+                           178     ;                                       
+                           179                                             
+                           180                                             
+0000                       181     Display         PROC    NEAR
+                           182                     PUBLIC  Display
+                           183                     
+0000                       184     StartDisplay:
+0000 60                    185         PUSHA
+                           186         
+                           187     
+0001 B90000                188         MOV     CX, 0           ; initialize counter for the segbuffer
+                           189         
+0004                       190     CheckEndOfString:
+0004 33C0                  191         XOR     AX,AX                                       ; clear AX
+0006 268A04                192         MOV     AL, ES:[SI]            ; get value of the first character in the string 
+0009 46                    193             INC     SI                          ; move to next character in string
+000A 3C00                  194         CMP     AL, ASCII_NULL            ; see if the string has ended (see if the curre
+                                   nt character is euqal to ASCII_NULL)                        
+000C 741F                  195         JE      EndOfString                                 ; if =, jump to end of the st
+                                   ring 
+                           196         ;JMP    StoreSegTableValue
+                           197         
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    5
+
+
+LOC  OBJ                  LINE     SOURCE
+
+000E                       198     StoreSegTableValue:
+                           199     
+000E D1E0                  200         SHL     AX, 1                       ; multiply the ascii character value by 2 (si
+                                   nce each code is 2 bytes long, we wnat to go to 2*ASCII_VAL to get to the right chara
+                                   cter)
+0010 8BD8                  201         MOV     BX, AX                      ; move the ascii value (index in the table) t
+                                   o BX to be accessed soon
+                           202         
+0012 2E8A870000     E      203         MOV     AL, CS:ASCIISegTable[BX]    ; move the code values in byte by byte
+0017 43                    204         INC     BX                          ; move to the second part of the display code
+                                    pattern
+0018 2E8AA70000     E      205         MOV     AH, CS:ASCIISegTable[BX]    ; move that in too
+                           206         
+001D 8BD9                  207         MOV     BX, CX                  ; move counter for segbuffer here
+001F 89870000       R      208         MOV     segBuffer[BX], AX       ; move value into BX
+                           209         
+0023 83C102                210         ADD     CX,WORDSIZE
+0026 83F910                211         CMP     CX, numSegsBytes                 ; if we have reached capacity of the seg
+                                   ment buffer, they'd be equal
+0029 7CD9                  212         JL      CheckEndOfString          ; not equal! -> store more segment table values
+002B 7D10                  213         JGE     EndDisplay                  ; >= means we end this function, buffer can't
+                                    fit more
+                           214     
+                           215         ;JMP     CheckEndOfString           ; after every increment in the string pointer
+                                   , see
+                           216                                             ; if we have reached the end of the string.
+002D                       217     EndOfString:
+                           218         
+002D 8BD9                  219         MOV     BX, CX      
+                           220         
+002F C78700000000   R      221         MOV     segBuffer[BX], ASCII_NULL   ; store null string in each entry in 
+                           222                                             ; segment buffer
+0035 83C102                223         ADD     CX, WORDSIZE
+                           224         ;JMP     CheckEndOfBufferAfterString
+                           225         
+0038                       226     CheckEndOfBufferAfterString:            ; string is done and we are checking if buffe
+                                   r
+                           227                                             ; capacity has been reached
+0038 83F910                228         CMP     CX, numSegsBytes
+003B 7CF0                  229         JL      EndOfString                 ; buffer capacity not reached: add more space
+                                   s
+                           230         ;JGE     EndDisplay
+                           231         
+003D                       232     EndDisplay:
+003D 61                    233         POPA
+003E C3                    234         RET                     ; we are done, return
+                           235         
+                           236         
+                           237     Display ENDP
+                           238         
+                           239     ;               
+                           240     ;
+                           241     ; DisplayNum 
+                           242     ;
+                           243     ; Description:          This function turns a given number into its decimal 
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    6
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           244     ;                                       representation and gets it ready to be displa
+                                   yed on the 
+                           245     ;                                       LED display. The function is passed a 16-bit 
+                                   signed value 
+                           246     ;                                       (n) to output in decimal (at most 5 digits pl
+                                   us sign) to 
+                           247     ;                                       the LED display. The number (n) is passed in 
+                                   AX by value. 
+                           248     ;                   The resulting string is written to DS:SI.
+                           249     ;
+                           250     ; Operation:            We will use two previously written functions to 
+                           251     ;                                       display a number in decimal. First, we will t
+                                   urn the given
+                           252     ;                                       number into a string in decimal form using De
+                                   c2String, and
+                           253     ;                                       then we will call Display on this string to s
+                                   how it 
+                           254     ;                                       on the LED display.
+                           255     ;
+                           256     ; Arguments:            AX - 16-bit signed value to be turned into a decimal string
+                           257     ; Return Value:         None.
+                           258     ; Local Variables:      AX - number to be displayed
+                           259     ;                                       SI - address of string to be displayed 
+                           260     ; Shared Variables: segBuffer - place to store the segment code values  
+                           261     ; Global Variables:     None. 
+                           262     ; Input:                        None. 
+                           263     ; Output:                       None.
+                           264     ; Error Handling:       None.
+                           265     ; Algorithms:           None.
+                           266     ; Data Structures:      None.
+                           267     ;
+                           268     
+003F                       269     DisplayNum      PROC    NEAR
+                           270                     PUBLIC  DisplayNum
+003F 60                    271         PUSHA
+0040 BE220090       R      272         MOV     SI, OFFSET(stringBuffer) ; DS:SI should point to stringBuffer, set this 
+                           273                                             ; up so Dec2String can write string there.
+0044 8CDB                  274         MOV     BX, DS
+0046 8EC3                  275         MOV     ES, BX
+                           276     
+0048 56                    277         PUSH SI
+0049 E80000         E      278             CALL    Dec2String                              ; turns number to decimal str
+                                   ing 
+004C 5E                    279         POP SI
+                           280         
+004D E8B0FF                281             CALL    Display                                 ; calls display on the string
+                                     
+0050 61                    282         POPA
+0051 C3                    283         RET
+                           284     DisplayNum      ENDP          
+                           285     
+                           286     ;
+                           287     ;
+                           288     ; DisplayHex 
+                           289     ;
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    7
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           290     ; Description:          This function turns a given number into its hex 
+                           291     ;                                       representation and gets it ready to be displa
+                                   yed. 
+                           292     ;                                       The function is passed a 16-bit unsigned valu
+                                   e (n) to 
+                           293     ;                                       output in hexadecimal (at most 4 digits) to t
+                                   he LED 
+                           294     ;                                       display. The number (n) is passed in AX by va
+                                   lue. 
+                           295     ;                   The resulting string is written to DS:SI.
+                           296     ;
+                           297     ; Operation:            We will use two previously written functions to 
+                           298     ;                                       display a number in hex. First, we will turn 
+                                   the given
+                           299     ;                                       number into a string in hex form using Hex2St
+                                   ring, and
+                           300     ;                                       then we will call Display on this string to s
+                                   how it 
+                           301     ;                                       on the LED display.
+                           302     ;
+                           303     ; Arguments:            AX - 16-bit unsigned value to be turned into a hex string
+                           304     ;
+                           305     ; Return Value:         None.
+                           306     ;
+                           307     ; Local Variables:      AX - 16-bit unsigned value to be turned into a hex string
+                           308     ;                   SI - address of string to be displayed  
+                           309     ; Shared Variables: segBuffer - place to store the segment code values  
+                           310     ; Global Variables: None. 
+                           311     ; Input:                        None. 
+                           312     ; Output:                       None. 
+                           313     ; Error Handling:       None. 
+                           314     ; Algorithms:           None. 
+                           315     ; Data Structures:      None. 
+                           316     ;
+0052                       317     DisplayHex      PROC    NEAR
+                           318                     PUBLIC  DisplayHex
+                           319     
+0052 BE220090       R      320         MOV     SI, OFFSET(stringBuffer)    ; set address of SI up so that Hex2String
+                           321                                                 ; can write the string here
+0056 8CDB                  322         MOV     BX, DS
+0058 8EC3                  323         MOV     ES, BX
+                           324     
+005A 56                    325         PUSH SI
+005B E80000         E      326             CALL    Hex2String              ; converts number to hex string 
+005E 5E                    327         POP SI
+                           328         
+005F E89EFF                329         CALL    Display             ; displays string on LED display 
+0062 C3                    330             RET
+                           331     DisplayHex      ENDP
+                           332     
+                           333     
+                           334             
+                           335     ; InitDisplay 
+                           336     ;
+                           337     ; Description:          This function initializes the segment buffer, clears 
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    8
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           338     ;                                       the display (by clearing the seg buffer), and
+                                    
+                           339     ;                                       initializes display multiplexing variables. 
+                           340     ;
+                           341     ; Operation:            This function blanks the digits and initializes the 
+                           342     ;                                       display muxing variables. 
+                           343     ;
+                           344     ; Arguments:            None. 
+                           345     ; Return Value:         None.           
+                           346     ; Local Variables:      BX - counter for looping through segment buffer
+                           347     ; Shared Variables: currentSeg - keeps track of next digit for mux 
+                           348     ;                                       segBuffer  - buffer is filled with DISPLAY_BL
+                                   ANK
+                           349     ; Global Variables: None. 
+                           350     ; Input:                        None. 
+                           351     ; Output:                       The LED display is blanked.
+                           352     ; Error Handling:       None.
+                           353     ; Algorithms:           None.
+                           354     ; Data Structures:      None.
+                           355     ;
+                           356     
+                           357     
+0063                       358     InitMDisplay     PROC    NEAR
+                           359                     PUBLIC  InitMDisplay
+                           360     
+                           361     
+0063                       362     StartInitDisplay:                   
+0063 60                    363         PUSHA                           ; save registers
+                           364         
+0064 BB0000                365         MOV     BX, 0                   ; start counter at 0 (this counter loops 
+                           366                                         ; segment buffer and clears each entry)
+                           367                                         
+0067 BAA4FF                368         MOV     DX, IO_LED_LOC          ; get I/O location of LED display 
+006A B000                  369         MOV     AL, IO_LED_VAL          ; get I/O value to write to IO_LED_LOC 
+006C EE                    370         OUT     DX, AL                  ; write 0 to I/O location 0FFA4H for display chip
+                                    select logic
+                           371     
+006D                       372     ClearDisplay:                       ;start clearing the display
+006D B90800                373         MOV     CX, numSegs             ;number of segments to clear
+0070 C78700000000   R      374         MOV     segBuffer[BX], LED_BLANK   ; move blank character into each 
+                           375                                                 ; segBuffer entry
+0076 43                    376         INC     BX                      ; increment counter
+0077 83FB10                377         CMP     BX,numSegsBytes              ; compare counter to 8 (number of segments)
+007A 75F1                  378         JNE     ClearDisplay            ; if the counter hasn't reached 8, then 
+                           379                                         ; clear next entry in segment buffer
+                           380         ;JE      InitMuxVariables
+                           381         
+007C                       382     InitMuxVariables:
+007C C70620000000   R      383         MOV     currentSeg, 0                       ; Initialize current mux segment 
+                           384     
+                           385         
+0082                       386     EndInitDisplay:                         ;done initializing the display 
+0082 61                    387         POPA                            ; restore registers and
+0083 C3                    388         RET                             ; return
+                           389     
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE    9
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           390     
+                           391     InitMDisplay     ENDP
+                           392     
+                           393     
+                           394     ; DisplayMux 
+                           395     ;
+                           396     ; Description:          Multiplexer for the display. This procedure multiplexes
+                           397     ;                                       the LED display under interrupt control. It i
+                                   s meant to 
+                           398     ;                                       be called at a regular interval of about 1 ms
+                                   . This 
+                           399     ;                                       function is going to display 1 digit for 1 in
+                                   stance. 
+                           400     ;       
+                           401     ; Operation:            The multiplexer remembers which digit was called last,
+                           402     ;                                       by storing and updating the muxCounter variab
+                                   le. Then it 
+                           403     ;                                       writes the 14-segment code of the next digit 
+                                   to the
+                           404     ;                                       display at the current digit. One digit is ou
+                                   tput each time
+                           405     ;                                       this function is called.
+                           406     ;
+                           407     ; Arguments:            None.
+                           408     ; Return Value:         None.
+                           409     ; Local Variables:      None.
+                           410     ; Shared Variables: currentSeg - number that keeps track of which digit is
+                           411     ;                                                                       being display
+                                   ed
+                           412     ;                                       buffer     - segment buffer holding segment c
+                                   ode values 
+                           413     ; Global Variables: None. 
+                           414     ; Input:                        None. 
+                           415     ; Output:                       The next digit is output to the display.  
+                           416     ; Error Handling:       None. 
+                           417     ; Algorithms:           None. 
+                           418     ; Data Structures:      segment buffer - array of bytes holding segment code values 
+                           419     ;
+                           420     
+                           421     
+                           422     
+0084                       423     DisplayMux                      PROC    NEAR            
+                           424                                             PUBLIC  DisplayMux
+                           425             
+0084                       426     StartDisplayMux:                                         
+0084 60                    427         PUSHA                       ; store registers   
+                           428        
+                           429         ; we want to see if currentSeg is even or odd
+                           430         
+0085 8B1E2000       R      431         MOV     BX, currentSeg
+0089 D1E3                  432         SHL     BX, 1           ; multiply by 2
+008B 8B870000       R      433         MOV     AX, WORD PTR segBuffer[BX]
+                           434         
+008F 86E0                  435         XCHG    AH, AL          ; AH becomes the AL
+0091 BA0800                436         MOV     DX, 0008H
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE   10
+
+
+LOC  OBJ                  LINE     SOURCE
+
+0094 EE                    437         OUT     DX, AL
+                           438         
+0095 86E0                  439         XCHG    AH, AL          ; AL is restored
+                           440         
+                           441         ;SHR     BX, 1           ; divide the current segment by 2 to get the LED display
+                                    number
+0097 8B162000       R      442         MOV     DX, currentSeg          ; move address into DX
+009B 83C200                443         ADD     DX, 0000H
+009E EE                    444         OUT     DX, AL
+                           445         
+009F                       446     IncrementMuxCounter:                    ; set number to mux next time 
+009F 8B1E2000       R      447         MOV     BX, currentSeg
+00A3 43                    448         INC     BX
+00A4 8BC3                  449         MOV     AX, BX
+00A6 B90800                450         MOV     CX, numSegs         ; get (currentSeg + 1) mod (number of segments)
+00A9 F7F1                  451         DIV     CX                  ; to accoung for mux counter wraparound
+00AB 89162000       R      452         MOV     currentSeg, DX
+                           453             
+00AF                       454     EndDisplayMux:
+00AF 61                    455         POPA                        ; restore registers
+00B0 C3                    456             RET                                                     ; done multiplexing L
+                                   EDs - return
+                           457             
+                           458     
+                           459     
+                           460     DisplayMux                      ENDP
+                           461     
+                           462     
+                           463     
+----                       464     CODE    ENDS                                                                   
+                           465     
+                           466     
+                           467     
+                           468     
+                           469     
+                           470     ; the data segment 
+                           471     
+----                       472     DATA    SEGMENT PUBLIC  'DATA'
+                           473     
+0000 (16                   474     segBuffer       DW       numSegsBytes DUP (?)   ; buffer holding currently displayed 
+                                   pattern
+     ????
+     )
+                           475                                                                             ; holds words
+                                    because 14-seg codes are words
+0020 ????                  476     currentSeg      DW      ?                   ; current segment of digit to be muxed ne
+                                   xt
+                           477     
+0022 (16                   478     stringBuffer DB  numSegsBytes DUP (?)   ; character array 
+     ??
+     )
+                           479                     
+----                       480     DATA    ENDS
+                           481     
+                           482     
+8086/87/88/186 MACRO ASSEMBLER    DISPLAY                                                  20:34:39  10/29/;6  PAGE   11
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           483     
+                           484     ;the stack
+                           485     
+----                       486     STACK   SEGMENT STACK  'STACK'
+                           487     
+0000 (80                   488             DB      80 DUP ('Stack ')       ;240 words
+     537461636B20
+     )
+                           489     
+01E0                       490             TopOfStack      LABEL   WORD
+                           491     
+----                       492     STACK   ENDS
+                           493     
+                           494     END
+
+ASSEMBLY COMPLETE, NO ERRORS FOUND

@@ -1,0 +1,54 @@
+Homework 2
+
+
+Problem 5: Target Board Familiarization
+
+Keypad: 
+
+When I was looking at memory location 080H: 
+first row: 7f7e, 7f7d, 7f7b, 7f77. Can create 7f70 through 7f7e, with the 
+first button as 1, 2nd as 2, 3rd as 4, 4th as 8 for last digits. (so if you don't 
+press the first one but press all the rest, then you will get 7f71). This sets 
+the last digit of the value that we see in the debugger. 
+
+second row: 7e7f, 7d7f, 7b7f, 777f, can create 707f through 7e7f, with the 
+first button as 1, 2:2, 3: 4, 4:8. This sets the second-to-last digit.
+
+Looking at 081H, 082H, 083H will give you the same thing, but the rows shift 
+downward one every time. 
+
+
+Display: 
+
+Changing values of 00H gives you changes in the first digit. Setting the value 
+equal to 1, 2, 4, 8, and subsequent values of 2, up to 128, will highlight the 
+outline of the 0 (when value is 1, 2, 4, 8, 16, 32). A value of 64 will 
+highlight horizontal line in the middle. A value of 128 will light up the dot. 
+255 is the maximum value, and that lights up everything. Any value in between 
+will light up whichever branches whose corresponding numbers add up to that
+value. Setting the value to 0 will turn it off. 
+
+To change which digit in the display to change, use 00H for first digit, 01H 
+for second digit, and so on, until 07H, the last digit. 
+
+
+Problem 6: 
+
+NMI (Non-Maskable Interrupt):
+    Address of first instruction: f800:753c
+    The first three instructions: PUSH  BP
+                                  MOV   BP,SP
+                                  PUSH  AX
+                                  
+A breakpoint (INT 3 input):
+    Address of first instruction: 2000:0004
+    The first three instructions: CALL  e8ef
+                                  CALL  e8f2
+                                  CALL  e8f5
+                                  
+A single-step interrupt: 
+    Address of first instruction: f800:75fe
+    The first three instructions: NOP
+                                  NOP
+                                  JMP   SHORT 7510
+

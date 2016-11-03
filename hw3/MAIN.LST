@@ -1,0 +1,164 @@
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     18:37:51  10/22/;6  PAGE    1
+
+
+DOS 5.0 (038-N) 8086/87/88/186 MACRO ASSEMBLER V3.1 ASSEMBLY OF MODULE MAIN
+OBJECT MODULE PLACED IN MAIN.OBJ
+ASSEMBLER INVOKED BY:  C:\UTIL\ASM86.EXE MAIN.ASM M1 DB EP
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                             1             NAME    MAIN
+                             2     
+                             3     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             4     ;                                                                            ;
+                             5     ;                                 HW3 Main loop                              ;
+                             6     ;                                  EE/CS  51                                 ;
+                             7     ;                                                                            ;
+                             8     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             9     
+                            10     ; Description:      This program tests the queue routine functions for Homework
+                            11     ;                   #3.  It calls HW3TEST, which tests each of the functions 
+                            12     ;                   defined in queuefunctions.asm.  If all tests pass, it jumps 
+                            13     ;                   to the label AllTestsGood.  If any test fails it jumps to 
+                            14     ;                   the label TestFailed.
+                            15     ;
+                            16     ; Input:            None.
+                            17     ; Output:           None.
+                            18     ;
+                            19     ; User Interface:   No real user interface.  The user can set breakpoints at
+                            20     ;                   AllTestsGood and TestFailed to see if the code is working
+                            21     ;                   or not.
+                            22     ; Error Handling:   If a test fails the program jumps to TestFailed.
+                            23     ;
+                            24     ; Algorithms:       None.
+                            25     ; Data Structures:  None.
+                            26     ;
+                            27     ; Known Bugs:       None.
+                            28     ; Limitations:      The returned strings must be less than MAX_STRING_SIZE
+                            29     ;                   characters.
+                            30     ;
+                            31     ; Revision History:
+                            32     ;    10/19/2016         Jennifer Du     initial revision
+                            33     
+                            34     
+                            35     ; include files
+                            36 +1  $INCLUDE(queue.inc)
+                      =1    37     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    38     ;                                                                            ;
+                      =1    39     ;                              QUEUEFUNCTIONS.INC                            ;
+                      =1    40     ;                           Queue Routine Functions                          ;
+                      =1    41     ;                                 Include File                               ;
+                      =1    42     ;                                                                            ;
+                      =1    43     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    44     
+                      =1    45     ; This file contains the variable declarations for the queue functions 
+                      =1    46     ; QueueInit, QueueEmpty, QueueFull, Dequeue, and Enqueue.
+                      =1    47     
+                      =1    48     
+  0001                =1    49     BYTEorWORD      EQU     0001H         ; if 1, it's a byte, if 0, word. 
+  00FF                =1    50     ARRAY_MOD_OP    EQU     00FFH
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     18:37:51  10/22/;6  PAGE    2
+
+
+LOC  OBJ                  LINE     SOURCE
+
+  0100                =1    51     ARRAY_SIZE      EQU     0100H
+                      =1    52     
+----                  =1    53     qStruc  STRUC
+0000                  =1    54         array       DB      ARRAY_SIZE      DUP     (?)
+0100                  =1    55         tail        DW      ?
+0102                  =1    56         head        DW      ?
+0104                  =1    57         elsize      DW      ?
+----                  =1    58     qStruc  ENDS
+                      =1    59     
+                      =1    60          
+                            61 +1  $INCLUDE(common.inc)
+                      =1    62     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    63     ;                                                                            ;
+                      =1    64     ;                                  COMMON.INC                                ;
+                      =1    65     ;                                   EE/CS 51                                 ;
+                      =1    66     ;                    Include file for commonly used constants                ;
+                      =1    67     ;                                                                            ;
+                      =1    68     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    69     
+                      =1    70     ; This file contains commonly used constants. 
+                      =1    71     
+                      =1    72     ; Word and byte size:
+                      =1    73     
+  0002                =1    74     WORDSIZE        EQU         0002H       ; 1 word is 2 bytes
+  0001                =1    75     BYTESIZE        EQU         0001H       ; 1 byte is 1 byte 
+                            76     
+                            77     
+                            78     
+                            79     CGROUP  GROUP   CODE
+                            80     DGROUP  GROUP   DATA, STACK
+                            81     
+----                        82     CODE    SEGMENT PUBLIC 'CODE'
+                            83     
+                            84             ASSUME  CS:CGROUP, DS:DGROUP
+                            85     
+                            86     
+                            87     ;external function declarations
+                            88         
+                            89             EXTRN   QueueTest:NEAR            ; Test code by Glen George
+                            90     
+                            91             
+0000                        92     START:  
+                            93     
+0000                        94     MAIN:
+0000 B8----         R       95                     MOV     AX, DGROUP              ;initialize the stack pointer
+0003 8ED0                   96             MOV     SS, AX
+0005 BCE00190       R       97             MOV     SP, OFFSET(DGROUP:TopOfStack)
+                            98     
+0009 B8----         R       99             MOV     AX, DGROUP              ;initialize the data segment
+000C 8ED8                  100             MOV     DS, AX
+                           101     
+                           102             
+000E BE000090       R      103             MOV     SI, OFFSET(queue)               ; initialize the queue [SI], queue
+0012 B90001                104                     MOV     CX, ARRAY_SIZE
+0015 49                    105                     DEC     CX
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     18:37:51  10/22/;6  PAGE    3
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           106     
+0016 E80000         E      107             CALL QueueTest                                  ; call the test code
+                           108                     
+                           109             
+----                       110     CODE    ENDS
+                           111     
+                           112     
+                           113     
+                           114     
+                           115     ; the data segment 
+                           116     
+----                       117     DATA        SEGMENT     PUBLIC      'DATA'
+                           118     
+0000 (256                  119         queue   qStruc      < >                
+     ??
+     )
+0100 ????
+0102 ????
+0104 ????
+                           120     
+----                       121         DATA        ENDS
+                           122     
+                           123     
+                           124     
+                           125     ;the stack
+                           126     
+----                       127     STACK   SEGMENT STACK  'STACK'
+                           128     
+0000 (80                   129             DB      80 DUP ('Stack ')       ;240 words
+     537461636B20
+     )
+                           130     
+01E0                       131             TopOfStack      LABEL   WORD
+                           132     
+----                       133     STACK   ENDS
+                           134     
+                           135             END         START
+
+ASSEMBLY COMPLETE, NO ERRORS FOUND

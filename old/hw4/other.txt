@@ -1,0 +1,514 @@
+MUX
+event handler (calls the MUX)
+initDisplay (initialize the segment buffer = 0, MUX counter = 0)
+initTimer (use glen's code, but make your own )
+initCS (initialize chip select, use glen's code, but explain)
+clear IRQ vectors (glen's code ) ClrIRQVectors 
+install handler 
+Illegal event handler (glen's code )
+
+
+
+        NAME  DISPTMR
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                            ;
+;                                   DISPTMR                                 ;
+;                                Timer Routines                              ;
+;                                                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This file contains the functions for handling the timer and timer events in
+; the clock.  The included public functions are:
+;    InitTimer           - initialize timer interrupts and variables
+;    ResetSeconds        - reset the second counter
+;    InstallTimerHandler - install the timer event handler
+;    HaveNewSecond       - determines if a second has elapsed
+;    HaveNewMinute       - determines if a minute has elapsed
+;
+; The included local functions are:
+;    TimerEventHandler   - timer event handler
+;
+; Revision History:
+;    11/1/93   Glen George      initial revision
+;    10/31/94  Glen George      added Revision History section
+;                               updated comments
+;    10/25/95  Glen George      updated comments
+;    10/28/96  Glen George      updated comments
+;    11/17/97  Glen George      changed UpdateTime function to NewSecond and
+;                                  NewMinute functions for better separation
+;                                  of functionality
+;                               sent a TimerEOI instead of a non-specific EOI
+;                                  in InitTimer function
+;                               sent a TimerEOI instead of a Timer2EOI in
+;                                  TimerEventHandler
+;                               added colon blinking and keeping track of
+;                                  elapsed minutes in the TimerEventHandler
+;                               made InitTimer, NewSecond, NewMinute, and
+;                                  InstallTimerHandler public
+;                               added Shared Variables section to functions
+;    10/11/98  Glen George      changed all variable names to be more
+;                                  descriptive and follow naming conventions
+;                               changed function names (ResetTimerCntr to
+;                                  ResetSeconds, NewSecond to HaveNewSecond,
+;                                  NewMinute to HaveNewMinute)
+;                               made ResetSeconds public
+;                               changed output to 188 peripherals to use 8-bit
+;                                  I/O instructions, not 16-bit (see page 4-5
+;                                  of 80C186XL/80C188XL Microprocessor User's
+;                                  Manual)
+;                               added $INCLUDE of GENERAL.INC to get
+;                                  definitions of TRUE and FALSE
+;                               updated comments
+;    12/26/99  Glen George      fixed handling of interrupt flag in critical
+;                                  code sections of HaveNewSecond and
+;                                  HaveNewMinute
+;                               updated comments
+;     1/26/00  Glen George      fixed minor bug in handling of NewSecond and
+;                                  NewMinute flags (treated as 16-bit values
+;                                  instead of 8-bit values)
+;                               updated comments
+;    12/25/00  Glen George      updated comments
+;     1/28/02  Glen George      switched to using ES to install handlers
+;     1/30/03  Glen George      updated comments
+;    12/24/03  Glen George      updated comments
+;     7/12/10  Glen George      updated include file names and comments
+;     7/14/10  Glen George      updated comments
+
+
+
+; local include files
+$INCLUDE(CLKGEN.INC)
+$INCLUDE(CLKTMR2.INC)
+
+
+
+
+PROGRAM SEGMENT PUBLIC 'CODE'
+
+        ASSUME  CS:PROGRAM, DS:DATA
+
+
+
+
+; external function declarations
+
+        EXTRN   SwitchDebounce:NEAR     ;switch debouncing routine
+        EXTRN   LEDMux:NEAR             ;LED multiplexing routine
+        EXTRN   DisplayColonToggle:NEAR ;toggle the colon
+
+
+
+
+; InitTimer
+;
+; Description:       This function initializes the 80188 timers and the time
+;                    keeping variables and flags.
+;
+; Operation:         The 80188 timers are initialized to generate interrupts
+;                    every 1 ms.  The interrupt controller is also initialized
+;                    to allow the timer interrupts.  Timer #2 is used to scale
+;                    the internal clock from 2 MHz to 1 KHz and generate the
+;                    interrupts.  The time keeping counters and flags are also
+;                    reset.
+;
+; Arguments:         None.
+; Return Value:      None.
+;
+; Local Variables:   None.
+; Shared Variables:  None.
+; Global Variables:  None.
+;
+; Input:             None.
+; Output:            Timer #2 and the Interrupt Controller are initialized.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: flags, AX, DX
+; Stack Depth:       1 word
+;
+; Author:            Glen George
+; Last Modified:     October 11, 1998
+
+InitTimer       PROC    NEAR
+                PUBLIC  InitTimer
+
+
+        CALL    ResetSeconds    ;reset the counters
+
+
+        MOV     DX, Tmr2Count   ;initialize the count register to 0
+        XOR     AX, AX
+        OUT     DX, AL
+
+        MOV     DX, Tmr2MaxCnt  ;setup max count for 1ms counts
+        MOV     AX, ONE_MS_CNT
+        OUT     DX, AL
+
+        MOV     DX, Tmr2Ctrl    ;setup the control register
+        MOV     AX, Tmr2CtrlVal
+        OUT     DX, AL
+
+
+        MOV     DX, INTCtrlrCtrl;setup the interrupt control register
+        MOV     AX, INTCtrlrCVal
+        OUT     DX, AL
+
+        MOV     DX, INTCtrlrEOI ;send an EOI to turn off any pending interrupts
+        MOV     AX, TimerEOI
+        OUT     DX, AL
+
+
+        RET                     ;done so return
+
+
+InitTimer       ENDP
+
+
+
+
+; ResetSeconds
+;
+; Description:       This function resets the counters for timing seconds and
+;                    minutes.  It also clears the update flags for these
+;                    timers and resets the colon blink timer.
+;
+; Operation:         The time keeping counters are initialized and the time
+;                    keeping flags are set to FALSE.
+;
+; Arguments:         None.
+; Return Value:      None.
+;
+; Local Variables:   None.
+; Shared Variables:  cntToNextSec  - set to SECOND_CNT.
+;                    NewSecond     - set to FALSE.
+;                    cntToNextMin  - set to MINUTE_CNT.
+;                    NewMinute     - set to FALSE.
+;                    colonBlinkCnt - set to COLON_RATE.
+; Global Variables:  None.
+;
+; Input:             None.
+; Output:            None.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: None
+; Stack Depth:       0 words
+;
+; Author:            Glen George
+; Last Modified:     October 11, 1998
+
+ResetSeconds    PROC    NEAR
+                PUBLIC  ResetSeconds
+
+
+        MOV     cntToNextSec, SECOND_CNT;initialize the seconds counter
+        MOV     NewSecond, FALSE        ;clear new second flag
+
+        MOV     cntToNextMin, MINUTE_CNT;initialize the minute counter
+        MOV     NewMinute, FALSE        ;clear new minute flag
+
+        MOV     colonBlinkCnt, COLON_RATE  ;initialize the colon blink counter
+
+
+        RET                             ;done so return
+
+
+ResetSeconds    ENDP
+
+
+
+
+; InstallTimerHandler
+;
+; Description:       Install the event handler for the timer interrupt.
+;
+; Operation:         The event handler address is written to the timer
+;                    interrupt vector.
+;
+; Arguments:         None.
+; Return Value:      None.
+;
+; Local Variables:   None.
+; Shared Variables:  None.
+; Global Variables:  None.
+;
+; Input:             None.
+; Output:            None.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: flags, AX, ES
+; Stack Depth:       0 words
+;
+; Author:            Glen George
+; Last Modified:     January 28, 2002
+
+InstallTimerHandler     PROC    NEAR
+                        PUBLIC  InstallTimerHandler
+
+
+        XOR     AX, AX                  ;clear ES (interrupt vectors are in segment 0)
+        MOV     ES, AX
+                                        ;store the vector
+        MOV     ES: WORD PTR (4 * Tmr2Vec), OFFSET(TimerEventHandler)
+        MOV     ES: WORD PTR (4 * Tmr2Vec + 2), SEG(TimerEventHandler)
+
+
+        RET                             ;all done, return
+
+
+InstallTimerHandler     ENDP
+
+
+
+
+; TimerEventHandler
+;
+; Description:       This procedure is the event handler for the timer
+;                    interrupt.  It updates the timing information and calls
+;                    the routines that debounce the switches and multiplex the
+;                    LEDs.
+;
+; Operation:         The second and minute counters are updated.  If a counter
+;                    decrements to 0 the associated flag is set indicating a
+;                    second or minute has elapsed.  The colon blink counter is
+;                    also updated and if it reaches zero the state of the
+;                    colon (on/off) is changed.  Finally, the switch debounce
+;                    and LED multiplexing routines are called.
+;
+; Arguments:         None.
+; Return Value:      None.
+;
+; Local Variables:   None.
+; Shared Variables:  cntToNextSec  - updated and checked for zero.
+;                    NewSecond     - set to TRUE if cntToNextSec reaches zero.
+;                    cntToNextMin  - updated and checked for zero.
+;                    NewMinute     - set to TRUE if cntToNextMin reaches zero.
+;                    colonBlinkCnt - updated and checked for zero.
+; Global Variables:  None.
+;
+; Input:             Values of switches.
+; Output:            Segments to the display.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: None
+; Stack Depth:       4 words
+;
+; Author:            Glen George
+; Last Modified:     October 11, 1998
+
+TimerEventHandler       PROC    NEAR
+
+        PUSH    AX                      ;save the registers (changed by
+        PUSH    BX                      ;  DisplayColonToggle, SwitchDebounce,
+        PUSH    DX                      ;  and LEDMux)
+
+
+UpdateTheTime:                          ;start by updating the time
+        DEC     cntToNextSec            ;update the second counter
+        JNZ     EndUpdateTime           ;if not zero yet - done updating
+        ;JZ     HaveSecond              ;otherwise another second has elapsed
+
+HaveSecond:                             ;a second has elapsed
+        MOV     cntToNextSec, SECOND_CNT;reinitialize the counter
+        MOV     NewSecond, TRUE         ;set the seconds flag
+        DEC     cntToNextMin            ;now see if a minute has elapsed
+        JNZ     EndUpdateTime           ;if not, done updating the time
+        ;JZ     HaveMinute              ;otherwise another minute has elapsed
+
+HaveMinute:                             ;a minute has elapsed
+        MOV     cntToNextMin, MINUTE_CNT;reset the counter
+        MOV     NewMinute, TRUE         ;and set the new minute flag
+        ;JMP    EndUpdateTime           ;done updating time
+
+
+EndUpdateTime:                          ;done updating time - take care of colon
+        DEC     colonBlinkCnt           ;run the colon blink timer
+        JNZ     EndColonBlink           ;if not zero yet - done with colon
+        ;JZ     BlinkColon              ;otherwise blink the colon
+
+BlinkColon:                             ;time to blink the colon
+        MOV     colonBlinkCnt, COLON_RATE  ;reinitialize the counter
+        CALL    DisplayColonToggle      ;blink the colon
+        ;JMP    EndColonBlink           ;done with blinking the colon
+
+
+EndColonBlink:                          ;done blinking colon - do other tasks
+        CALL    SwitchDebounce          ;debounce the switches
+        CALL    LEDMux                  ;multiplex the LEDs
+        ;JMP    TimerEventEOI           ;done, so send the EOI to the controller
+
+
+TimerEventEOI:                          ;send the timer EOI to the interrupt
+        MOV     DX, INTCtrlrEOI         ;   controller (all timers use the
+        MOV     AX, TimerEOI            ;   same EOI)
+        OUT     DX, AL
+        ;JMP    EndTimerEventHandler    ;done with the timer event
+
+
+EndTimerEventHandler:                   ;done taking care of the timer
+        POP     DX                      ;restore the registers
+        POP     BX
+        POP     AX
+
+
+        IRET                            ;and return
+
+
+TimerEventHandler       ENDP
+
+
+
+
+; HaveNewSecond
+;
+; Description:       This procedure returns whether or not a second has
+;                    elapsed since the last time it was called (NewSecond flag
+;                    is set).  NewSecond is always reset by this function.
+;
+; Operation:         The NewSecond flag is checked and then reset to FALSE.
+;                    Interrupts are disabled during this procedure.
+;
+; Arguments:         None.
+; Return Value:      ZF - set if a second has elapsed since the last call to
+;                         this function.
+;
+; Local Variables:   None.
+; Shared Variables:  NewSecond - set to FALSE and old state is returned.
+; Global Variables:  None.
+;
+; Input:             None.
+; Output:            None.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: flags
+; Stack Depth:       2 words
+;
+; Author:            Glen George
+; Modified:          January 26, 2000
+
+HaveNewSecond   PROC    NEAR
+                PUBLIC  HaveNewSecond
+
+
+        PUSH    AX                      ;don't want to trash AX
+        PUSHF                           ;save current interrupt flag setting
+        CLI                             ;can't interrupt this code
+
+
+        MOV     AL, NewSecond           ;get current status of new second flag
+        MOV     NewSecond, FALSE        ;always reset the new second flag
+
+        POPF                            ;restore flags (possibly re-enabling interrupts)
+
+        CMP     AL, TRUE                ;now set the zero flag appropriately
+        POP     AX                      ;and restore AX
+
+
+        RET                             ;done so return
+
+
+HaveNewSecond   ENDP
+
+
+
+
+; HaveNewMinute
+;
+; Description:       This procedure returns whether or not a minute has
+;                    elapsed since the last time it was called (NewMinute flag
+;                    is set).  NewMinute is always reset by this function.
+;
+; Operation:         The NewMinute flag is checked and then reset to FALSE.
+;                    Interrupts are disabled during this procedure.
+;
+; Arguments:         None.
+; Return Value:      ZF - set if a minute has elapsed since the last call to
+;                         this function.
+;
+; Local Variables:   None.
+; Shared Variables:  NewMinute - set to FALSE and old state is returned.
+; Global Variables:  None.
+;
+; Input:             None.
+; Output:            None.
+;
+; Error Handling:    None.
+;
+; Algorithms:        None.
+; Data Structures:   None.
+;
+; Registers Changed: flags
+; Stack Depth:       2 words
+;
+; Author:            Glen George
+; Last Modified:     January 26, 2000
+
+HaveNewMinute   PROC    NEAR
+                PUBLIC  HaveNewMinute
+
+
+        PUSH    AX                      ;need to preserve AX
+        PUSHF                           ;save current setting of interrupt flag
+        CLI                             ;can't interrupt this code
+
+
+        MOV     AL, NewMinute           ;get current new minute flag setting
+        MOV     NewMinute, FALSE        ;always reset the new minute flag
+
+        POPF                            ;restore flags (possibly re-enabling interrupts)
+
+        CMP     AL, TRUE                ;now set the zero flag appropriately
+        POP     AX                      ;and restore AX
+
+
+        RET                             ;done so return
+
+
+HaveNewMinute   ENDP
+
+
+
+
+PROGRAM ENDS
+
+
+
+
+;the data segment
+
+DATA    SEGMENT PUBLIC  'DATA'
+
+
+cntToNextSec    DW      ?               ;counter for timing seconds
+NewSecond       DB      ?               ;flag indicating a second has passed
+
+cntToNextMin    DW      ?               ;counter for timing minutes
+NewMinute       DB      ?               ;flag indicating a minute has passed
+
+colonBlinkCnt   DW      ?               ;counter for timing colon blinking
+
+
+DATA    ENDS
+
+
+
+        END
