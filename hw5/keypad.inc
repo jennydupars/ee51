@@ -1,0 +1,30 @@
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                            ;
+;                                   Keypad                                   ;
+;                                Inlude File                                 ;
+;                                  EE/CS 51                                  ;
+;                                                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This file contains the assembly language definitions for the keypad
+; functions for homework 5.
+
+; Input locations (read keypad input from here)
+
+IO_KEYPAD_LOC 	EQU 	0FFA8H		; IO location of the keypad 
+IO_KEYPAD_VAL 	EQU 	00183H		; value to write to keypad location for correct CS 
+
+
+; Reading from these locs will give us the keys pressed in each row in the lowest nibble
+
+KEYPAD_LOC		EQU 	080H 
+
+
+	
+ 
+PRESS_THRESHOLD EQU 	001EH	; 30 iterations
+UNPRESSED_KEY	EQU 	00FFH 	; value when no key is pressed 
+
+KEY_PRESS_EVENT EQU 	0001H 	

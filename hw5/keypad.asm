@@ -1,13 +1,11 @@
-	NAME		KEYPAD
-
+	NAME	KEYPAD
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                                                            ;
-;								     KEYPAD                                  ;
-;                           	   Homework 5         		                 ;
+;	                                 KEYPAD                                  ;
+;                                  Homework 5                                ;
 ;                                   EE/CS 51                                 ;
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ;
 ; This file contains the functions for keypad input reading. The functions included are:
 ;   InitKeypad - initializes variables used to scan and debounce keypad. 
@@ -16,87 +14,227 @@
 
 ; Revision History:
 ;     10/31/16  	Jennifer Du      initial revision
+; 	  11/02/16 		Jennifer Du 	 writing in assembly 
 
 
-		
-; KeypadScanner 
+; External function declarations
+	EXTRN 	EnqueueEvent:NEAR 		; function that adds key event and value to 
+									; the EventBuf buffer 
+
+
+; Include files 
+$INCLUDE(keypad.inc)
+$INCLUDE(common.inc)
+
+
+CGROUP  GROUP   CODE
+DGROUP  GROUP   DATA
+
+CODE    SEGMENT PUBLIC 'CODE'
+
+        ASSUME  CS:CGROUP, DS:DGROUP
+
 ;
-; Description: 		This function is the keypad scanning and debouncing function for 
-;					the RoboTrike. This function is called by the timer event handler, 
-;			 		and every time it is called, it either checks for a new key being 
-;					pressed if none is currently pressed, or debounces the currently 
-;					pressed key. Once it has a debounced key, this function will call 
-;					the supplied EnqueueEvent function with the key event in AH and the 
-;					key value in AL. The EnqueueEvent stores the events and key values 
-;					passed to it in a 256 byte buffer called EventBuf. 
 ;
-;					This function will be able to handle at most 2 keys pressed at the
-;					same time. 
 ;
-; Operation: 		This function keeps track of what keys have been pressed and for how 
-;					long in a 16-element array called keyStatus. First, it reads from the 
-;					input location, and from the value given, we will be able to tell which
-;					keys have been pressed. From this, we will keep track of the changes to 
-;					make to the keyStatus array by storing the key values in the 
+; KeypadMux  
 ;
-; Arguments: 		None. 
-; Return Value:		None. 
+; Description:  This function is the keypad scanning and debouncing function for 
+;	            the RoboTrike. This function is called by the timer event handler, 
+;	            and every time it is called, it either checks for a new key being 
+;	            pressed if none is currently pressed, or debounces the currently 
+;	            pressed key. Once it has a debounced key, this function will call 
+;	            the supplied EnqueueEvent function with the key event in AH and the 
+;	            key value in AL. Each key value will be represented by the value in 
+; 				the row's location, that way multiple key presses in the same row 
+;				will be able to be detected. If no key is pressed in a certain row, 
+;				the value stored will be 0FH. If key 0 in that row is pressed, then 
+;				the value stored will be 0EH, or 0FH - 0001b. If key 1 in that row is 
+;				pressed, then the value stored will be 0DH, or 0FH - 0010b, and so on. 
+; 				Each key corresponds to a bit, and the value of reading the row will 
+;				be the difference between 0FH and the sum of the keys pressed. 
 ;
-; Local Variables:	
-; Shared Variables:  
-; Global Variables: None. 
+;	            This function will be able to handle at most 2 keys pressed at the
+;	            same time, in the same row. 
 ;
-; Input: 			User input to the keypad. 
-; Output: 			None.
+; Operation:    This function keeps track of what keys have been pressed and for how 
+;	            long in two shared variables. First, it reads from the 
+;	            input location, and from the value given, we will be able to tell which
+;	            keys have been pressed. From this, we store the key values in the 
+;               variables key1val and key2val, and the duration of their pressed 
+;               status in key1status and key2status. 
+;
+;				We scan one row per function call, and store any pressed keys if their 
+;				duration of being pressed (how many function calls have they been 
+;				pressed) is greater than 30 iterations. Then, we update the row to scan 
+;				at the next interrupt, and add one to the number of iterations a key 
+;				has been pressed. 
+;
+; Arguments:        None. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: debounceCount - how long (in function calls) current key press has lasted 
+;					currentRow - current row of keys being scanned 
+;					currentKey - value of current key being pressed 
+; Global Variables:	None.
+; 
+; Input:            User input to the keypad. 
+; Output:           None.
 ;
 ; Error Handling: 	None. 
-; Registers Used: 	
+; Registers Used: 	AX, DX 
 ;
 ; Algorithms: 		None. 
-; Data Structures: 	 
-;					
-                                        
-                                        
-Pseudocode: 
+; Data Structures:  None.
+;	          
 
-	save registers 
+KeypadMux 		PROC	NEAR
+				PUBLIC	KeypadMux
+				
+StartKeypadMux: 
 	
-	IN AX, KeypadPortLoc 		; store 
+	MOV 	DX, KEYPAD_LOC + currentRow 	; move location of currentRow into DX
+	IN 		AL, DX 							; get lower bits at DX (any key?)
+	CMP 	AL, currentKey 					
+	JNE 	NewKey
+	JE		SameKey
 	
-	if key is pressed :
-		debounce key 
-		AH -> key event (pressed??)
-		AL -> value 
-	if key is not pressed : 
-		check for a key being pressed 
-	restore registers 
+NewKey: 
+	
+	MOV 	debounceCount, PRESS_THRESHOLD
+	IN 		AL, DX 							; did CMP change AL?
+	CMP 	AL, UNPRESSED_KEY				; is the new key actually no key?
+	JE 		NoKeyPressed	
+	JNE 	EndKeypadMux
+
+NoKeyPressed: 
+	
+	INC 	row 
+	MOV  	AX, row 
+	DIV 	4H 
+	MOV 	row, DX 
+	MOV 	currentKey, UNPRESSED_KEY
+	JMP 	EndKeypadMux
+
+SameKey: 
+	
+	CMP 	currentKey, UNPRESSED_KEY
+	JE 		EndKeypadMux
+	
+	DEC 	debounceCount
+	CMP 	debounceCount, 0 
+	JE 		EnqueueKeyEvent 
+	JNE 	EndKeypadMux
+	
+EnqueueKeyEvent:
+
+	MOV 	AH, KEY_PRESS_EVENT
+	MOV 	AL, currentKey
+	CALL 	EnqueueEvent
+	
+EndKeypadMux: 
+
+	RET
+
+KeypadMux 	ENDP								 
+
+
+	newkey = IN (base+row)
+	if (newkey! = currentkey):
+		debounceCount = PRESS_THRESHOLD
+		if (no key):
+			row ++ (wraparound)
+			currentKey = nokey 
+	else 
+		debounceCount --
+		if debounceCount==0:
+			enqueueEvent(key_event, key)
+	
+
+
+Pseudocode: 
+    
+read the input: 
+first go through the input and see if we need to send in input to enqueueEvent 
+    if key1 or key2 are now unpressed, look at their counts 
+        calculate key's location: based on location (080H to 083H, and the 
+                value from the number (e = 1st, d = 2nd, b = 3rd, 7 = 4th) 
+        (if Count above 30, then sendEventToEnqueueEvent)
+            return the keyCount = 0 and set key = unpressed_val
+        (if Count not above 30, then that's a glitch, so ignore it)        
+            return the keyCount = 0 and set key = unpressed_val
+    if key1 or key2 are still pressed, increment counter. 
+
+check if key1 or key2 are still occupied 
+    both still occupied ->
+        if key1Count has reached 100, sendEventToEnqueueEvent
+        if key2Count has reached 100, sendEventToEnqueueEvent
+        can't take anymore input, so return 
+    at least one is unoccupied, you can take one more input, so:
+        scan through the input again and see which new keys are pressed 
+            store in key1 or key2, whichever is unused.
+            increment its count to 1 
+
+sendEventToEnqueueEvent 
+    AL: first digit is row, second digit is column (loc 080H, val e = 0e) 
+    AH: 01 means pressed, 00 means unpressed 
+    EnqueueEvent(AX)
             
-;		
+;	
 ;
 ; InitKeypad  
 ;
-; Description: 		
+; Description:  This function initializes the variables used in keeping track of what 
+;               keys are being pressed on the keypad. 
 ;
-; Operation: 		
+; Operation:    Set vars key1 and key2 to the unpressed value, set vars key1count 
+;               and key2count to 0.
 ;
-; Arguments: 		
-; Return Value: 	None.
-; Local Variables: 	
-; Shared Variables: 
-; Global Variables:	None. 
-; Input: 			None. 
-; Output: 			None.
-; Error Handling: 	None.
-; Registers used: 	
-; Algorithms: 		None.
-; Data Structures: 	
+; Arguments:        None. 
+; Return Value:     None.
 ;
+; Local Variables:  None. 
+; Shared Variables: debounceCount - how long (in function calls) current key press has lasted 
+;					currentRow - current row of keys being scanned 
+;					currentKey - value of current key being pressed 
+; Global Variables:	None.
+; 
+; Input:            None. 
+; Output:           None.
+; Error Handling:   None.
+; Registers used:   None. 
+; Algorithms:       None.
+; Data Structures:  None. 
+
+InitKeypad 		PROC	NEAR
+				PUBLIC	InitKeypad
+    
+StartInitKeypad: 
+	MOV 	debounceCount, PRESS_THRESHOLD 	; initialize debounceCount to amount of iterations needed to register key press 
+	MOV 	currentKey, UNPRESSED_KEY		; initialize value of current key to unpressed 
+	MOV 	row, 0000H 						; initial row to start scanning will be the first one 
+				 
+	RET
+InitKeypad 	ENDP
+
+CODE 	ENDS 
 
 
+;
 ; the data segment 
+DATA	SEGMENT	PUBLIC 'DATA'
 
-DATA	SEGMENT	PUBLIC 	'DATA'
-		
+; debounceCount tells us how long the current key has been pressed in terms
+; of number of function calls
+    debounceCount		DB 		?
+
+; currentKey stores the value of the key currently being pressed 	
+	currentKey			DB 		?
+	
+; currentRow stores the row number that is 	currently being scanned 
+	currentRow			DB 		?
+	
 DATA	ENDS
 
-
+END 
