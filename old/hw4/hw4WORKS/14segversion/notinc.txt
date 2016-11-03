@@ -1,5 +1,0 @@
-Not included:
-	converts.asm (unchanged from homework #2)
-	converts.inc (unchanged from homework #2)
-	segtab14.asm (unchanged from Glen's code)
-	
