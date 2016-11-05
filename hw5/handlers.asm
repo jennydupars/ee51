@@ -8,17 +8,20 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; This file includes functions that handle interrupts and timing for the keypad. 
-; The included functions are: 
-;	TimerEventHandler - calls KeypadMux at interrupts to repeatedly check for input 
-;	InstallTimerHandler - installs timer event handler for the timer interrupt 
+; This program is an event handler that manages interrupt service routines for 
+; the procedures for displaying strings on the LED display. The included 
+; functions are general enough to be used by functions other than the display 
+; functions. The included functions are: 
+;   ClrIRQVectors  - installs IllegalEventHandler for all invalid interrupts 
+;   IllegalEventHandler - sends EOI to interrupt handler to exit interrupt
 
+;
 ; Revision History:
 ;     11/02/16  	Jennifer Du      initial revision
-
+; 	  11/04/16 		Jennifer Du		 commenting 
     
 ; include files 
-$INCLUDE(handlers.inc)					; include file for handlers, interrupts, timers 
+$INCLUDE(handlers.inc)					; include file for handlers, interrupts 
 $INCLUDE(keypad.inc)
 
 
@@ -38,7 +41,7 @@ CODE    SEGMENT PUBLIC 'CODE'
 ;              		that all 256 vectors are initialized so the code must be
 ;                   located above 400H.  The initialization skips  (does not
 ;                   initialize vectors) from vectors FIRST_RESERVED_VEC to
-;                   LAST_RESERVED_VEC. This code is modelled after Glen's code.
+;                   LAST_RESERVED_VEC. 
 ;
 ; Arguments:		None.
 ; Return Value:		None.
@@ -67,6 +70,7 @@ InitClrVectorLoop:              ;setup to store the same handler 256 times
 
 ClrVectorLoop:                  ;loop clearing each vector
                                 ;check if should store the vector
+					; address is 4x vector because vectors are 2 words 
         CMP     SI, 4 * FIRST_RESERVED_VEC
         JB      DoStore         ;if before start of reserved field - store it
         CMP     SI, 4 * LAST_RESERVED_VEC
@@ -78,10 +82,10 @@ DoStore:                        ;store the vector
         MOV     ES: WORD PTR [SI + 2], SEG(IllegalEventHandler)
 
 DoneStore:                      ;done storing the vector
-        ADD     SI, 4           ;update pointer to next vector
+        ADD     SI, 4           ;update pointer to next vector (2 words, 4 bytes diff.)
 
         LOOP    ClrVectorLoop   ;loop until have cleared all vectors
-        ;JMP    EndClrIRQVectors;and all done
+        ;JMP    EndClrIRQVectors
 
 
 EndClrIRQVectors:               ;all done, return
@@ -97,8 +101,7 @@ ClrIRQVectors   ENDP
 ;				
 ; IllegalEventHandler 
 ;
-; Description: 		This function will be modelled after Glen's code. This  
-;					function is the event handler for illegal (uninitialized)
+; Description: 		This function is the event handler for illegal (uninitialized)
 ;					interrupts. It is called when an illegal interrupt occurs.
 ;
 ; Operation:		When this function is called, nothing happens, except that
@@ -123,7 +126,7 @@ IllegalEventHandler     PROC    NEAR
         PUSH    AX                      ;save the registers
         PUSH    DX
 
-        MOV     DX, INTCtrlrEOI         ;send a non-sepecific EOI to the
+        MOV     DX, INTCtrlrEOI         ;send a non-specific EOI to the
         MOV     AX, NonSpecEOI          ;   interrupt controller to clear out
         OUT     DX, AL                  ;   the interrupt that got us here
 

@@ -29,6 +29,7 @@
 ;
 ; Revision History:
 ;    11/02/2016         Jennifer Du     initial revision
+; 	 11/04/2016			Jennifer Du		commenting 
 
 
 ; include files
@@ -45,14 +46,15 @@ CODE    SEGMENT PUBLIC 'CODE'
 
 ;external function declarations
 
-    ; These are contained in timer handler and event handler files
+    ; These are contained in timer handler and event handler and chip select files
     EXTRN   InitCS:NEAR             ; initializes chip select logic
-    EXTRN   InitTimer:NEAR          ; initializes timer
-    EXTRN   ClrIRQvectors:NEAR      ; intalls IllegalEventHandler for relevant 
+    EXTRN   InitTimer0:NEAR         ; initializes timer 0
+    EXTRN   ClrIRQvectors:NEAR      ; installs IllegalEventHandler for relevant 
                                     ; interrupts in the vector table
-    EXTRN   InstallTimerHandler:NEAR; installs event handler for timer interrupt
+    EXTRN   InstallTimer0Handler:NEAR; installs event handler for timer 0 interrupts
     
-    EXTRN   InitKeypad:NEAR
+	; a keypad.asm routine 
+    EXTRN   InitKeypad:NEAR			; initializes keypad variables
 
         
 START:  
@@ -72,22 +74,18 @@ MAIN:
 
     CALL    ClrIRQVectors           ; initialize interrupt vector table
 
-    CALL    InstallTimerHandler     ;install the event handler
-                                    ;   ALWAYS install handlers before
-                                    ;   allowing the hardware to interrupt.
+    CALL    InstallTimer0Handler     ;install the event handler
 
-    CALL    InitTimer               ;initialize the internal timer
+    CALL    InitTimer0               ;initialize the internal timer
 
-    CALL    InitKeypad				; initialize keypad scanning variables and 
-									; 	open keypad port for use 
+    CALL    InitKeypad				; initialize keypad scanning variables
 
     STI                             ;and finally allow interrupts.
   
 
 Forever: 
-	JMP    Forever                 ;sit in an infinite loop, nothing to
-                                        ;   do in the background routine
-        HLT                             ;never executed (hopefully)
+	JMP    Forever                 ;sit in an infinite loop
+        HLT                             
         
         
 		

@@ -8,9 +8,12 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; The function included in this file is for initializing chip select for the keypad: 
+; 		InitCS - initializes chip select 
 
 ; Revision History:
 ;     11/02/16  	Jennifer Du      initial revision
+; 	  11/04/16 		Jennifer Du 	 commenting 
 
 ;external function declarations
 
@@ -18,7 +21,7 @@
 
     
 ; include files 
-$INCLUDE(initcs.inc)					; include file for handlers, interrupts, timers 
+$INCLUDE(initcs.inc)					; include file for initializing chip select 
 $INCLUDE(keypad.inc)
 
 CGROUP  GROUP   CODE
@@ -61,9 +64,9 @@ InitCS  PROC    NEAR
         MOV     AX, MPCSval
         OUT     DX, AL          ;write MPCSval to MPCS (I/O space, 3 wait states)
 
-		MOV 	DX, IO_KEYPAD_LOC
-		MOV 	AX, IO_KEYPAD_VAL
-		OUT 	DX, AX 
+		;MOV 	DX, IO_KEYPAD_LOC
+		;MOV 	AX, IO_KEYPAD_VAL
+		;OUT 	DX, AX 
 
         RET                     ;done so return
 

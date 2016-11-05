@@ -1,3 +1,11 @@
 # Ignore the folders 
 new 
-old 
+old
+
+# Ignore .lst and .obj 
+*.lst
+*.obj 
+*.pdf 
+*.mp1
+*.mp2
+

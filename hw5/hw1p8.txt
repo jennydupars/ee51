@@ -1,12 +1,23 @@
-Homework 1 Problem 8
-11/04/2016
-Jennifer Du
 
-After setting a breakpoint at the IllegalEventHandler, we stop there. Then I stepped 
-through and returned after IllegalEventHandler finished, to address 0040:0046. 
 
-That means that pcdebug really didn't like doing the line of code at address 0040:0044. 
-The line of code that it messed up on is DIV CX. 
 
-This was after CWD, which converted AX to DX:AX, a doubleword. The bug in the code 
-is that we didn't clear DX before dividing by CX!
+
+
+
+		Homework 1 Problem 8
+		11/04/2016
+
+		Jennifer Du
+
+
+		After setting a breakpoint at the IllegalEventHandler, we stop there. 
+		Then I stepped through and returned after IllegalEventHandler finished,
+		to address 0040:0046. 
+
+		That means that pcdebug really didn't like doing the line of code 
+		at address 0040:0044:
+			0040:0044 		DIV 	CX 
+
+		This was after CWD, which converted AX to DX:AX, a doubleword. This 
+		instruction concatenates DX (ffffH) with AX (fff9). This is fine, but 
+		the bug in the code is that we didn't clear DX before dividing AX by CX.

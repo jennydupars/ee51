@@ -1,5 +1,11 @@
-Not included:
-	converts.asm (unchanged from homework #2)
-	converts.inc (unchanged from homework #2)
-	segtab14.asm (unchanged from Glen's code)
-	
+Included files: 
+	main.asm (main loop)
+	keypad.asm (holds keypad scanning and initialization functions)
+		keypad.inc 
+	initcs.asm (initialize chip select function)
+		initcs.inc
+	evthndlr.asm (interrupts routines and setup)
+		handlers.inc
+	tmrsetup.asm (timer setup routines)
+		timers.inc 
+		

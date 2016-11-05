@@ -17,12 +17,10 @@ IO_KEYPAD_LOC 	EQU 	0FFA8H		; IO location of the keypad
 IO_KEYPAD_VAL 	EQU 	00183H		; value to write to keypad location for correct CS 
 
 
-; Reading from these locs will give us the keys pressed in each row in the lowest nibble
-
 KEYPAD_LOC		EQU 	080H 		; port number to read from (not including offset)
 
 REPEAT_TIME 	EQU 	1000D 		; 12288 iterations 
-PRESS_TIME		EQU 	0050H		; 500 iterations
+PRESS_TIME		EQU 	0050H		; 80 iterations
 
 KEY_MASK		EQU 	000FH 		; will get last 4 bits of keypad value 	
  
