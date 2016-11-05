@@ -1,0 +1,340 @@
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    1
+
+
+DOS 5.0 (038-N) 8086/87/88/186 MACRO ASSEMBLER V3.1 ASSEMBLY OF MODULE KEYPAD
+OBJECT MODULE PLACED IN KEYPAD.OBJ
+ASSEMBLER INVOKED BY:  C:\UTIL\ASM86.EXE KEYPAD.ASM M1 DB EP
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                             1             NAME    KEYPAD
+                             2     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             3     ;                                                                            ;
+                             4     ;                                        KEYPAD                                  ;
+                             5     ;                                  Homework 5                                ;
+                             6     ;                                   EE/CS 51                                 ;
+                             7     ;                                                                            ;
+                             8     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             9     ;
+                            10     ; This file contains the functions for keypad input reading. The functions included a
+                                   re:
+                            11     ;   InitKeypad - initializes variables used to scan and debounce keypad. 
+                            12     ;       KeypadMux - keypad scanning and debouncing function
+                            13     
+                            14     
+                            15     ; Revision History:
+                            16     ;     10/31/16          Jennifer Du      initial revision
+                            17     ;         11/02/16              Jennifer Du      writing in assembly 
+                            18     
+                            19     
+                            20     ; External function declarations
+                            21             EXTRN   EnqueueEvent:NEAR               ; function that adds key event and va
+                                   lue to 
+                            22                                                                             ; the EventBu
+                                   f buffer 
+                            23     
+                            24     
+                            25     ; Include files 
+                            26 +1  $INCLUDE(keypad.inc)
+                      =1    27     
+                      =1    28     
+                      =1    29     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    30     ;                                                                            ;
+                      =1    31     ;                                   Keypad                                   ;
+                      =1    32     ;                                Inlude File                                 ;
+                      =1    33     ;                                  EE/CS 51                                  ;
+                      =1    34     ;                                                                            ;
+                      =1    35     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    36     
+                      =1    37     ; This file contains the assembly language definitions for the keypad
+                      =1    38     ; functions for homework 5.
+                      =1    39     
+                      =1    40     ; Input locations (read keypad input from here)
+                      =1    41     
+  FFA8                =1    42     IO_KEYPAD_LOC   EQU     0FFA8H          ; IO location of the keypad 
+  0183                =1    43     IO_KEYPAD_VAL   EQU     00183H          ; value to write to keypad location for corre
+                                   ct CS 
+                      =1    44     
+                      =1    45     
+                      =1    46     ; Reading from these locs will give us the keys pressed in each row in the lowest nib
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    2
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                                   ble
+                      =1    47     
+  0080                =1    48     KEYPAD_LOC              EQU     080H            ; port number to read from (not inclu
+                                   ding offset)
+                      =1    49     
+  03E8                =1    50     REPEAT_TIME     EQU     1000D           ; 12288 iterations 
+  0050                =1    51     PRESS_TIME              EQU     0050H           ; 500 iterations
+                      =1    52     
+  000F                =1    53     KEY_MASK                EQU     000FH           ; will get last 4 bits of keypad valu
+                                   e  
+                      =1    54      
+  0004                =1    55     NUM_ROWS                EQU     0004H           ; there are 4 rows 
+                      =1    56     
+  000F                =1    57     UNPRESSED_KEY   EQU     000FH           ; value when no key is pressed 
+                      =1    58     
+  0001                =1    59     KEY_PRESS_EVENT EQU     0001H           ; value stored in AH indicating key event 
+                            60 +1  $INCLUDE(common.inc)
+                      =1    61     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    62     ;                                                                            ;
+                      =1    63     ;                                  COMMON.INC                                ;
+                      =1    64     ;                                   EE/CS 51                                 ;
+                      =1    65     ;                    Include file for commonly used constants                ;
+                      =1    66     ;                                                                            ;
+                      =1    67     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    68     
+                      =1    69     ; This file contains commonly used constants. 
+                      =1    70     
+                      =1    71     ; Word and byte size:
+                      =1    72     
+  0002                =1    73     WORDSIZE        EQU         0002H       ; 1 word is 2 bytes
+  0001                =1    74     BYTESIZE        EQU         0001H       ; 1 byte is 1 byte 
+                            75     
+                            76     
+                            77     CGROUP  GROUP   CODE
+                            78     DGROUP  GROUP   DATA
+                            79     
+----                        80     CODE    SEGMENT PUBLIC 'CODE'
+                            81     
+                            82             ASSUME  CS:CGROUP, DS:DGROUP
+                            83     
+                            84     ;
+                            85     ;
+                            86     ;
+                            87     ; KeypadMux  
+                            88     ;
+                            89     ; Description:  This function is the keypad scanning and debouncing function for 
+                            90     ;                   the RoboTrike. This function is called by the timer event handler
+                                   , 
+                            91     ;                   and every time it is called, it either checks for a new key being
+                                    
+                            92     ;                   pressed if none is currently pressed, or debounces the currently 
+                            93     ;                   pressed key. Once it has a debounced key, this function will call
+                                    
+                            94     ;                   the supplied EnqueueEvent function with the key event in AH and t
+                                   he 
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    3
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                            95     ;                   key value in AL. Each key value will be represented by the value 
+                                   in 
+                            96     ;                               the row's location, that way multiple key presses in 
+                                   the same row 
+                            97     ;                               will be able to be detected. If no key is pressed in 
+                                   a certain row, 
+                            98     ;                               the value stored will be 0FH. If key 0 in that row is
+                                    pressed, then 
+                            99     ;                               the value stored will be 0EH, or 0FH - 0001b. If key 
+                                   1 in that row is 
+                           100     ;                               pressed, then the value stored will be 0DH, or 0FH - 
+                                   0010b, and so on. 
+                           101     ;                               Each key corresponds to a bit, and the value of readi
+                                   ng the row will 
+                           102     ;                               be the difference between 0FH and the sum of the keys
+                                    pressed. 
+                           103     ;
+                           104     ;                   This function will be able to handle at most 2 keys pressed at th
+                                   e
+                           105     ;                   same time, in the same row. 
+                           106     ;
+                           107     ; Operation:    This function keeps track of what keys have been pressed and for how 
+                           108     ;                   long in two shared variables. First, it reads from the 
+                           109     ;                   input location, and from the value given, we will be able to tell
+                                    which
+                           110     ;                   keys have been pressed. From this, we store the key values in the
+                                    
+                           111     ;               variables key1val and key2val, and the duration of their pressed 
+                           112     ;               status in key1status and key2status. 
+                           113     ;
+                           114     ;                               We scan one row per function call, and store any pres
+                                   sed keys if their 
+                           115     ;                               duration of being pressed (how many function calls ha
+                                   ve they been 
+                           116     ;                               pressed) is greater than 500 iterations. Then, we upd
+                                   ate the row to scan 
+                           117     ;                               at the next interrupt, and add one to the number of i
+                                   terations a key 
+                           118     ;                               has been pressed. 
+                           119     ;
+                           120     ; Arguments:        None. 
+                           121     ; Return Value:     None.
+                           122     ;
+                           123     ; Local Variables:  None. 
+                           124     ; Shared Variables: debounceCount - how long (in function calls) current key press ha
+                                   s lasted 
+                           125     ;                                       currentRow - current row of keys being scanne
+                                   d 
+                           126     ;                                       currentKey - value of current key being press
+                                   ed 
+                           127     ; Global Variables:     None.
+                           128     ; 
+                           129     ; Input:            User input to the keypad. 
+                           130     ; Output:           None.
+                           131     ;
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    4
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           132     ; Error Handling:       None. 
+                           133     ; Registers Used:       AX, DX 
+                           134     ;
+                           135     ; Algorithms:           None. 
+                           136     ; Data Structures:  None.
+                           137     ;                 
+                           138     
+0000                       139     KeypadMux               PROC    NEAR
+                           140                                     PUBLIC  KeypadMux
+                           141                                     
+0000                       142     StartKeypadMux: 
+                           143             
+0000 33C0                  144             XOR     AX, AX 
+0002 BA8000                145             MOV     DX, KEYPAD_LOC
+0005 03160300       R      146             ADD     DX, currentRow                                  ; move location of cu
+                                   rrentRow into DX
+0009 ED                    147             IN              AX, DX                                                  ; get
+                                    lower bits at DX (any key?)
+000A 250F00                148             AND     AX, KEY_MASK
+000D 3A060200       R      149             CMP     AL, currentKey                                  
+0011 7502                  150             JNE     NewKey
+0013 7412                  151             JE              SameKey
+                           152             
+0015                       153     NewKey: 
+                           154             
+0015 A20200         R      155             MOV     currentKey, AL                                  ; if new key, store t
+                                   he new key 
+0018 C70600005000   R      156             MOV     debounceCount, PRESS_TIME
+001E 3C0F                  157             CMP     AL, UNPRESSED_KEY                               ; is the new key actu
+                                   ally no key?
+0020 7402                  158             JE              NoKeyPressed    
+0022 7544                  159             JNE     EndKeypadMux
+                           160     
+0024                       161     NoKeyPressed: 
+                           162             
+0024 EB3290                163             JMP     UpdateRow
+                           164     
+0027                       165     SameKey: 
+                           166             
+0027 803E02000F     R      167             CMP     currentKey, UNPRESSED_KEY
+002C 742A                  168             JE              UpdateRow 
+                           169             
+002E FF0E0000       R      170             DEC     debounceCount
+0032 833E000000     R      171             CMP     debounceCount, 0 
+0037 7402                  172             JE              EnqueueKeyEvent 
+0039 752D                  173             JNE     EndKeypadMux
+                           174             
+003B                       175     EnqueueKeyEvent:
+                           176     
+003B 33C0                  177             XOR     AX, AX
+003D B401                  178             MOV     AH, KEY_PRESS_EVENT
+003F 8B0E0300       R      179             MOV     CX, currentRow 
+0043 C1E104                180             SHL     CX, 4
+0046 8AC1                  181             MOV     AL, CL
+0048 02060200       R      182             ADD     AL, currentKey 
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    5
+
+
+LOC  OBJ                  LINE     SOURCE
+
+004C E80000         E      183             CALL    EnqueueEvent
+004F C7060000E803   R      184             MOV     debounceCount, REPEAT_TIME
+0055 EB1190                185             JMP     EndKeypadMux
+                           186             
+0058                       187     UpdateRow:  
+                           188     
+0058 BA0000                189             MOV     DX, 0                                   ; clear DX before dividing 
+005B A10300         R      190             MOV     AX, currentRow
+005E 40                    191             INC     AX  
+005F B90400                192             MOV     CX, NUM_ROWS
+0062 F7F1                  193             DIV     CX
+0064 89160300       R      194             MOV     currentRow, DX
+                           195     
+0068                       196     EndKeypadMux:
+                           197             
+0068 C3                    198             RET
+                           199     
+                           200     KeypadMux       ENDP                                                             
+                           201     
+                           202     
+                           203     
+                           204             
+                           205     
+                           206     ;
+                           207     ; InitKeypad  
+                           208     ;
+                           209     ; Description:  This function initializes the variables used in keeping track of what
+                                    
+                           210     ;               keys are being pressed on the keypad. 
+                           211     ;
+                           212     ; Operation:    Set vars key1 and key2 to the unpressed value, set vars key1count 
+                           213     ;               and key2count to 0.
+                           214     ;
+                           215     ; Arguments:        None. 
+                           216     ; Return Value:     None.
+                           217     ;
+                           218     ; Local Variables:  None. 
+                           219     ; Shared Variables: debounceCount - how long (in function calls) current key press ha
+                                   s lasted 
+                           220     ;                                       currentRow - current row of keys being scanne
+                                   d 
+                           221     ;                                       currentKey - value of current key being press
+                                   ed 
+                           222     ; Global Variables:     None.
+                           223     ; 
+                           224     ; Input:            None. 
+                           225     ; Output:           None.
+                           226     ; Error Handling:   None.
+                           227     ; Registers used:   None. 
+                           228     ; Algorithms:       None.
+                           229     ; Data Structures:  None. 
+                           230     
+0069                       231     InitKeypad              PROC    NEAR
+                           232                                     PUBLIC  InitKeypad
+                           233         
+8086/87/88/186 MACRO ASSEMBLER    KEYPAD                                                   17:02:42  11/04/;6  PAGE    6
+
+
+LOC  OBJ                  LINE     SOURCE
+
+0069                       234     StartInitKeypad: 
+                           235             
+                           236     
+0069 C70600005000   R      237             MOV     debounceCount, PRESS_TIME       ; initialize debounceCount to amount 
+                                   of iterations needed to register key press 
+006F C60602000F90   R      238             MOV     currentKey, UNPRESSED_KEY               ; initialize value of current
+                                    key to unpressed 
+0075 C70603000000   R      239             MOV     currentRow, 0000H                                               ; ini
+                                   tial row to start scanning will be the first one 
+                           240                                      
+007B C3                    241             RET
+                           242     InitKeypad      ENDP
+                           243     
+----                       244     CODE    ENDS 
+                           245     
+                           246     
+                           247     ;
+                           248     ; the data segment 
+----                       249     DATA    SEGMENT PUBLIC 'DATA'
+                           250     
+                           251     ; debounceCount tells us how long the current key has been pressed in terms
+                           252     ; of number of function calls
+0000 ????                  253         debounceCount               DW              ?
+                           254     
+                           255     ; currentKey stores the value of the key currently being pressed        
+0002 ??                    256             currentKey                      DB              ?
+                           257             
+                           258     ; currentRow stores the row number that is      currently being scanned 
+0003 ????                  259             currentRow                      DW              ?
+                           260             
+----                       261     DATA    ENDS
+                           262     
+                           263     END 
+
+ASSEMBLY COMPLETE, NO ERRORS FOUND

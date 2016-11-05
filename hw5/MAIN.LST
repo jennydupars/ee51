@@ -1,0 +1,205 @@
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     17:02:42  11/04/;6  PAGE    1
+
+
+DOS 5.0 (038-N) 8086/87/88/186 MACRO ASSEMBLER V3.1 ASSEMBLY OF MODULE MAIN
+OBJECT MODULE PLACED IN MAIN.OBJ
+ASSEMBLER INVOKED BY:  C:\UTIL\ASM86.EXE MAIN.ASM M1 DB EP
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                             1             NAME            MAIN
+                             2             
+                             3     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             4     ;                                                                            ;
+                             5     ;                                                                  MAIN LOOP         
+                                                           ;
+                             6     ;                                  Homework 5                                    ;
+                             7     ;                                   EE/CS 51                                 ;
+                             8     ;                                                                            ;
+                             9     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                            10     
+                            11     
+                            12     ; Description:      This program tests the keypad routine functions and event 
+                            13     ;                                       handling code for Homework #5. This is the ma
+                                   in loop, and 
+                            14     ;                   it initializes the chip select logic, timers, interrupts, 
+                            15     ;                   and keypad code. Then, it calls HW5Test, which 
+                            16     ;                                       tests the functions defined in keypad.asm. 
+                            17     ;
+                            18     ; Input:            User input to the keypad. 
+                            19     ; Output:           None.
+                            20     ;
+                            21     ; Algorithms:       None.
+                            22     ; Data Structures:  None.
+                            23     ;
+                            24     ; User Interface:       The user will be able to use a keypad with 4 rows and 4 colum
+                                   ns
+                            25     ;                                       to provide keypad input to the system.
+                            26     ; Error Handling:       ?????????????????????????????????????????????????????????????
+                                   ?????????????????????????
+                            27     ;
+                            28     ; Known Bugs:       None.
+                            29     ;
+                            30     ; Revision History:
+                            31     ;    11/02/2016         Jennifer Du     initial revision
+                            32     
+                            33     
+                            34     ; include files
+                            35 +1  $INCLUDE(keypad.inc)
+                      =1    36     
+                      =1    37     
+                      =1    38     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    39     ;                                                                            ;
+                      =1    40     ;                                   Keypad                                   ;
+                      =1    41     ;                                Inlude File                                 ;
+                      =1    42     ;                                  EE/CS 51                                  ;
+                      =1    43     ;                                                                            ;
+                      =1    44     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    45     
+                      =1    46     ; This file contains the assembly language definitions for the keypad
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     17:02:42  11/04/;6  PAGE    2
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                      =1    47     ; functions for homework 5.
+                      =1    48     
+                      =1    49     ; Input locations (read keypad input from here)
+                      =1    50     
+  FFA8                =1    51     IO_KEYPAD_LOC   EQU     0FFA8H          ; IO location of the keypad 
+  0183                =1    52     IO_KEYPAD_VAL   EQU     00183H          ; value to write to keypad location for corre
+                                   ct CS 
+                      =1    53     
+                      =1    54     
+                      =1    55     ; Reading from these locs will give us the keys pressed in each row in the lowest nib
+                                   ble
+                      =1    56     
+  0080                =1    57     KEYPAD_LOC              EQU     080H            ; port number to read from (not inclu
+                                   ding offset)
+                      =1    58     
+  03E8                =1    59     REPEAT_TIME     EQU     1000D           ; 12288 iterations 
+  0050                =1    60     PRESS_TIME              EQU     0050H           ; 500 iterations
+                      =1    61     
+  000F                =1    62     KEY_MASK                EQU     000FH           ; will get last 4 bits of keypad valu
+                                   e  
+                      =1    63      
+  0004                =1    64     NUM_ROWS                EQU     0004H           ; there are 4 rows 
+                      =1    65     
+  000F                =1    66     UNPRESSED_KEY   EQU     000FH           ; value when no key is pressed 
+                      =1    67     
+  0001                =1    68     KEY_PRESS_EVENT EQU     0001H           ; value stored in AH indicating key event 
+                            69 +1  $INCLUDE(common.inc)
+                      =1    70     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    71     ;                                                                            ;
+                      =1    72     ;                                  COMMON.INC                                ;
+                      =1    73     ;                                   EE/CS 51                                 ;
+                      =1    74     ;                    Include file for commonly used constants                ;
+                      =1    75     ;                                                                            ;
+                      =1    76     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    77     
+                      =1    78     ; This file contains commonly used constants. 
+                      =1    79     
+                      =1    80     ; Word and byte size:
+                      =1    81     
+  0002                =1    82     WORDSIZE        EQU         0002H       ; 1 word is 2 bytes
+  0001                =1    83     BYTESIZE        EQU         0001H       ; 1 byte is 1 byte 
+                            84     
+                            85     
+                            86     CGROUP  GROUP   CODE
+                            87     DGROUP  GROUP   DATA, STACK
+                            88     
+----                        89     CODE    SEGMENT PUBLIC 'CODE'
+                            90     
+                            91             ASSUME  CS:CGROUP, DS:DGROUP;, SS:STACK
+                            92     
+                            93     ;external function declarations
+                            94     
+                            95         ; These are contained in timer handler and event handler files
+                            96         EXTRN   InitCS:NEAR             ; initializes chip select logic
+                            97         EXTRN   InitTimer:NEAR          ; initializes timer
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     17:02:42  11/04/;6  PAGE    3
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                            98         EXTRN   ClrIRQvectors:NEAR      ; intalls IllegalEventHandler for relevant 
+                            99                                         ; interrupts in the vector table
+                           100         EXTRN   InstallTimerHandler:NEAR; installs event handler for timer interrupt
+                           101         
+                           102         EXTRN   InitKeypad:NEAR
+                           103     
+                           104             
+0000                       105     START:  
+                           106     
+0000                       107     MAIN:
+                           108             
+0000 B8----         R      109         MOV     AX, DGROUP              ;initialize the stack pointer
+0003 8ED0                  110         MOV     SS, AX
+0005 BCE00190       R      111         MOV     SP, OFFSET(DGROUP:TopOfStack)
+                           112     
+0009 B8----         R      113         MOV     AX, DGROUP              ;initialize the data segment
+000C 8ED8                  114         MOV     DS, AX
+                           115         
+                           116     
+000E E80000         E      117         CALL    InitCS                  ;initialize the 80188 chip selects
+                           118                                         ;   assumes LCS and UCS already setup
+                           119     
+0011 E80000         E      120         CALL    ClrIRQVectors           ; initialize interrupt vector table
+                           121     
+0014 E80000         E      122         CALL    InstallTimerHandler     ;install the event handler
+                           123                                         ;   ALWAYS install handlers before
+                           124                                         ;   allowing the hardware to interrupt.
+                           125     
+0017 E80000         E      126         CALL    InitTimer               ;initialize the internal timer
+                           127     
+001A E80000         E      128         CALL    InitKeypad                          ; initialize keypad scanning variable
+                                   s and 
+                           129                                                                             ;       open 
+                                   keypad port for use 
+                           130     
+001D FB                    131         STI                             ;and finally allow interrupts.
+                           132       
+                           133     
+001E                       134     Forever: 
+001E EBFE                  135             JMP    Forever                 ;sit in an infinite loop, nothing to
+                           136                                             ;   do in the background routine
+0020 F4                    137             HLT                             ;never executed (hopefully)
+                           138             
+                           139             
+                           140                     
+                           141             
+----                       142     CODE    ENDS
+                           143     
+                           144     
+                           145     
+                           146     
+                           147     ; the data segment 
+                           148     ; initialized but empty so we can set up DGROUP 
+                           149     
+----                       150     DATA        SEGMENT     PUBLIC      'DATA'
+8086/87/88/186 MACRO ASSEMBLER    MAIN                                                     17:02:42  11/04/;6  PAGE    4
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           151     
+----                       152     DATA        ENDS
+                           153     
+                           154     
+                           155     
+                           156     ;the stack
+                           157     
+----                       158     STACK   SEGMENT STACK  'STACK'
+                           159     
+0000 (80                   160             DB      80 DUP ('Stack ')       ;240 words
+     537461636B20
+     )
+                           161     
+01E0                       162             TopOfStack      LABEL   WORD
+                           163     
+----                       164     STACK   ENDS
+                           165     
+                           166             END         START
+
+ASSEMBLY COMPLETE, NO ERRORS FOUND

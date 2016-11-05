@@ -66,7 +66,7 @@ CODE    SEGMENT PUBLIC 'CODE'
 ;
 ;				We scan one row per function call, and store any pressed keys if their 
 ;				duration of being pressed (how many function calls have they been 
-;				pressed) is greater than 30 iterations. Then, we update the row to scan 
+;				pressed) is greater than 500 iterations. Then, we update the row to scan 
 ;				at the next interrupt, and add one to the number of iterations a key 
 ;				has been pressed. 
 ;
@@ -94,33 +94,31 @@ KeypadMux 		PROC	NEAR
 				
 StartKeypadMux: 
 	
-	MOV 	DX, KEYPAD_LOC + currentRow 	; move location of currentRow into DX
-	IN 		AL, DX 							; get lower bits at DX (any key?)
+	XOR 	AX, AX 
+	MOV 	DX, KEYPAD_LOC
+	ADD 	DX, currentRow 					; move location of currentRow into DX
+	IN 		AX, DX 							; get lower bits at DX (any key?)
+	AND 	AX, KEY_MASK
 	CMP 	AL, currentKey 					
 	JNE 	NewKey
 	JE		SameKey
 	
 NewKey: 
 	
-	MOV 	debounceCount, PRESS_THRESHOLD
-	IN 		AL, DX 							; did CMP change AL?
+	MOV 	currentKey, AL 					; if new key, store the new key 
+	MOV 	debounceCount, PRESS_TIME
 	CMP 	AL, UNPRESSED_KEY				; is the new key actually no key?
 	JE 		NoKeyPressed	
 	JNE 	EndKeypadMux
 
 NoKeyPressed: 
 	
-	INC 	row 
-	MOV  	AX, row 
-	DIV 	4H 
-	MOV 	row, DX 
-	MOV 	currentKey, UNPRESSED_KEY
-	JMP 	EndKeypadMux
+	JMP 	UpdateRow
 
 SameKey: 
 	
 	CMP 	currentKey, UNPRESSED_KEY
-	JE 		EndKeypadMux
+	JE 		UpdateRow 
 	
 	DEC 	debounceCount
 	CMP 	debounceCount, 0 
@@ -129,59 +127,35 @@ SameKey:
 	
 EnqueueKeyEvent:
 
+	XOR 	AX, AX
 	MOV 	AH, KEY_PRESS_EVENT
-	MOV 	AL, currentKey
+	MOV 	CX, currentRow 
+	SHL 	CX, 4
+	MOV 	AL, CL
+	ADD 	AL, currentKey 
 	CALL 	EnqueueEvent
+	MOV 	debounceCount, REPEAT_TIME
+	JMP 	EndKeypadMux
 	
-EndKeypadMux: 
+UpdateRow:  
 
+	MOV 	DX, 0 					; clear DX before dividing 
+	MOV  	AX, currentRow
+	INC 	AX  
+	MOV 	CX, NUM_ROWS
+	DIV 	CX
+	MOV 	currentRow, DX
+
+EndKeypadMux:
+	
 	RET
 
 KeypadMux 	ENDP								 
 
 
-	newkey = IN (base+row)
-	if (newkey! = currentkey):
-		debounceCount = PRESS_THRESHOLD
-		if (no key):
-			row ++ (wraparound)
-			currentKey = nokey 
-	else 
-		debounceCount --
-		if debounceCount==0:
-			enqueueEvent(key_event, key)
+
 	
 
-
-Pseudocode: 
-    
-read the input: 
-first go through the input and see if we need to send in input to enqueueEvent 
-    if key1 or key2 are now unpressed, look at their counts 
-        calculate key's location: based on location (080H to 083H, and the 
-                value from the number (e = 1st, d = 2nd, b = 3rd, 7 = 4th) 
-        (if Count above 30, then sendEventToEnqueueEvent)
-            return the keyCount = 0 and set key = unpressed_val
-        (if Count not above 30, then that's a glitch, so ignore it)        
-            return the keyCount = 0 and set key = unpressed_val
-    if key1 or key2 are still pressed, increment counter. 
-
-check if key1 or key2 are still occupied 
-    both still occupied ->
-        if key1Count has reached 100, sendEventToEnqueueEvent
-        if key2Count has reached 100, sendEventToEnqueueEvent
-        can't take anymore input, so return 
-    at least one is unoccupied, you can take one more input, so:
-        scan through the input again and see which new keys are pressed 
-            store in key1 or key2, whichever is unused.
-            increment its count to 1 
-
-sendEventToEnqueueEvent 
-    AL: first digit is row, second digit is column (loc 080H, val e = 0e) 
-    AH: 01 means pressed, 00 means unpressed 
-    EnqueueEvent(AX)
-            
-;	
 ;
 ; InitKeypad  
 ;
@@ -211,9 +185,11 @@ InitKeypad 		PROC	NEAR
 				PUBLIC	InitKeypad
     
 StartInitKeypad: 
-	MOV 	debounceCount, PRESS_THRESHOLD 	; initialize debounceCount to amount of iterations needed to register key press 
+	
+
+	MOV 	debounceCount, PRESS_TIME 	; initialize debounceCount to amount of iterations needed to register key press 
 	MOV 	currentKey, UNPRESSED_KEY		; initialize value of current key to unpressed 
-	MOV 	row, 0000H 						; initial row to start scanning will be the first one 
+	MOV 	currentRow, 0000H 						; initial row to start scanning will be the first one 
 				 
 	RET
 InitKeypad 	ENDP
@@ -227,13 +203,13 @@ DATA	SEGMENT	PUBLIC 'DATA'
 
 ; debounceCount tells us how long the current key has been pressed in terms
 ; of number of function calls
-    debounceCount		DB 		?
+    debounceCount		DW 		?
 
 ; currentKey stores the value of the key currently being pressed 	
 	currentKey			DB 		?
 	
 ; currentRow stores the row number that is 	currently being scanned 
-	currentRow			DB 		?
+	currentRow			DW 		?
 	
 DATA	ENDS
 

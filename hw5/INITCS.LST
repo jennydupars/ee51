@@ -1,0 +1,164 @@
+8086/87/88/186 MACRO ASSEMBLER    INITCS                                                   17:02:42  11/04/;6  PAGE    1
+
+
+DOS 5.0 (038-N) 8086/87/88/186 MACRO ASSEMBLER V3.1 ASSEMBLY OF MODULE INITCS
+OBJECT MODULE PLACED IN INITCS.OBJ
+ASSEMBLER INVOKED BY:  C:\UTIL\ASM86.EXE INITCS.ASM M1 DB EP
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                             1             NAME    INITCS
+                             2             
+                             3     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                             4     ;                                                                            ;
+                             5     ;                                            Initialize Chip Select - Keypad         
+                                               ;
+                             6     ;                                  Homework 5                                    ;
+                             7     ;                                   EE/CS 51                                 ;
+                             8     ;                                                                            ;
+                             9     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                            10     
+                            11     
+                            12     ; Revision History:
+                            13     ;     11/02/16          Jennifer Du      initial revision
+                            14     
+                            15     ;external function declarations
+                            16     
+                            17         EXTRN   KeypadMux:NEAR             ; function for repeatedly checking input 
+                            18     
+                            19         
+                            20     ; include files 
+                            21 +1  $INCLUDE(initcs.inc)                                    ; include file for handlers, 
+                                   interrupts, timers 
+                      =1    22     
+                      =1    23     
+                      =1    24     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    25     ;                                                                            ;
+                      =1    26     ;                                 TIMERS.INC                               ;
+                      =1    27     ;                                 Include File                               ;
+                      =1    28     ;                                                                            ;
+                      =1    29     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    30     
+                      =1    31     ; Chip Select Unit Definitions
+                      =1    32     
+                      =1    33     ; Addresses
+  FFA4                =1    34     PACSreg         EQU     0FFA4H          ;address of PACS register
+  FFA8                =1    35     MPCSreg         EQU     0FFA8H          ;address of MPCS register
+                      =1    36     
+                      =1    37     ; Control Register Values
+  0003                =1    38     PACSval         EQU     00003H          ;PCS base at 0, 3 wait states
+                      =1    39                                             ;0000000000------  starts at address 0
+                      =1    40                                             ;----------000---  reserved
+                      =1    41                                             ;-------------0--  wait for RDY inputs
+                      =1    42                                             ;--------------11  3 wait states
+  0183                =1    43     MPCSval         EQU     00183H          ;PCS in I/O space, use PCS5/6, 3 wait states
+                      =1    44                                             ;0---------000---  reserved
+                      =1    45                                             ;-0000001--------  MCS is 8KB
+                      =1    46                                             ;--------1-------  output PCS5/PCS6
+                      =1    47                                             ;---------0------  PCS in I/O space
+                      =1    48                                             ;-------------0--  wait for RDY inputs
+8086/87/88/186 MACRO ASSEMBLER    INITCS                                                   17:02:42  11/04/;6  PAGE    2
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                      =1    49                                             ;--------------11  3 wait states
+                      =1    50     
+                            51 +1  $INCLUDE(keypad.inc)
+                      =1    52     
+                      =1    53     
+                      =1    54     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    55     ;                                                                            ;
+                      =1    56     ;                                   Keypad                                   ;
+                      =1    57     ;                                Inlude File                                 ;
+                      =1    58     ;                                  EE/CS 51                                  ;
+                      =1    59     ;                                                                            ;
+                      =1    60     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                      =1    61     
+                      =1    62     ; This file contains the assembly language definitions for the keypad
+                      =1    63     ; functions for homework 5.
+                      =1    64     
+                      =1    65     ; Input locations (read keypad input from here)
+                      =1    66     
+  FFA8                =1    67     IO_KEYPAD_LOC   EQU     0FFA8H          ; IO location of the keypad 
+  0183                =1    68     IO_KEYPAD_VAL   EQU     00183H          ; value to write to keypad location for corre
+                                   ct CS 
+                      =1    69     
+                      =1    70     
+                      =1    71     ; Reading from these locs will give us the keys pressed in each row in the lowest nib
+                                   ble
+                      =1    72     
+  0080                =1    73     KEYPAD_LOC              EQU     080H            ; port number to read from (not inclu
+                                   ding offset)
+                      =1    74     
+  03E8                =1    75     REPEAT_TIME     EQU     1000D           ; 12288 iterations 
+  0050                =1    76     PRESS_TIME              EQU     0050H           ; 500 iterations
+                      =1    77     
+  000F                =1    78     KEY_MASK                EQU     000FH           ; will get last 4 bits of keypad valu
+                                   e  
+                      =1    79      
+  0004                =1    80     NUM_ROWS                EQU     0004H           ; there are 4 rows 
+                      =1    81     
+  000F                =1    82     UNPRESSED_KEY   EQU     000FH           ; value when no key is pressed 
+                      =1    83     
+  0001                =1    84     KEY_PRESS_EVENT EQU     0001H           ; value stored in AH indicating key event 
+                            85     
+                            86     CGROUP  GROUP   CODE
+                            87     
+----                        88     CODE    SEGMENT PUBLIC 'CODE'
+                            89     
+                            90             ASSUME  CS:CGROUP
+                            91     ;       
+                            92     ;       
+                            93     ;       
+                            94     ; InitCS  
+                            95     ;
+                            96     ; Description:          This function will initialize the peripheral chip 
+                            97     ;                                       selects on the 80188. Based on Glen's code. 
+                            98     ;
+                            99     ; Operation:            This writes the initial values to the PACS and 
+8086/87/88/186 MACRO ASSEMBLER    INITCS                                                   17:02:42  11/04/;6  PAGE    3
+
+
+LOC  OBJ                  LINE     SOURCE
+
+                           100     ;                                       MPCS registers.
+                           101     ;
+                           102     ; Arguments:            None. 
+                           103     ; Return Value:         None. 
+                           104     ; Local Variables:      None. 
+                           105     ; Shared Variables: None. 
+                           106     ; Global Variables: None.
+                           107     ; Input:                        None. 
+                           108     ; Output:                       None. 
+                           109     ; Error Handling:       None. 
+                           110     ; Algorithms:           None. 
+                           111     ; Data Structures:      None. 
+                           112     ;
+                           113     
+                           114     
+0000                       115     InitCS  PROC    NEAR
+                           116             PUBLIC  InitCS
+                           117     
+0000 BAA4FF                118             MOV     DX, PACSreg     ;setup to write to PACS register
+0003 B80300                119             MOV     AX, PACSval
+0006 EE                    120             OUT     DX, AL          ;write PACSval to PACS (base at 0, 3 wait states)
+                           121     
+0007 BAA8FF                122             MOV     DX, MPCSreg     ;setup to write to MPCS register
+000A B88301                123             MOV     AX, MPCSval
+000D EE                    124             OUT     DX, AL          ;write MPCSval to MPCS (I/O space, 3 wait states)
+                           125     
+000E BAA8FF                126                     MOV     DX, IO_KEYPAD_LOC
+0011 B88301                127                     MOV     AX, IO_KEYPAD_VAL
+0014 EF                    128                     OUT     DX, AX 
+                           129     
+0015 C3                    130             RET                     ;done so return
+                           131     
+                           132     InitCS  ENDP
+                           133     
+----                       134     CODE        ENDS
+                           135        
+                           136         END
+
+ASSEMBLY COMPLETE, NO ERRORS FOUND

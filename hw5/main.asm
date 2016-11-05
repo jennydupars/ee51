@@ -12,7 +12,7 @@
 ; Description:      This program tests the keypad routine functions and event 
 ;					handling code for Homework #5. This is the main loop, and 
 ;                   it initializes the chip select logic, timers, interrupts, 
-;                   and keypad code. Then, it calls HW54Test, which 
+;                   and keypad code. Then, it calls HW5Test, which 
 ;					tests the functions defined in keypad.asm. 
 ;
 ; Input:            User input to the keypad. 
@@ -20,6 +20,10 @@
 ;
 ; Algorithms:       None.
 ; Data Structures:  None.
+;
+; User Interface: 	The user will be able to use a keypad with 4 rows and 4 columns
+; 					to provide keypad input to the system.
+; Error Handling: 	??????????????????????????????????????????????????????????????????????????????????????
 ;
 ; Known Bugs:       None.
 ;
@@ -37,7 +41,7 @@ DGROUP  GROUP   DATA, STACK
 
 CODE    SEGMENT PUBLIC 'CODE'
 
-        ASSUME  CS:CGROUP, DS:DGROUP, SS:STACK
+        ASSUME  CS:CGROUP, DS:DGROUP;, SS:STACK
 
 ;external function declarations
 
@@ -47,12 +51,9 @@ CODE    SEGMENT PUBLIC 'CODE'
     EXTRN   ClrIRQvectors:NEAR      ; intalls IllegalEventHandler for relevant 
                                     ; interrupts in the vector table
     EXTRN   InstallTimerHandler:NEAR; installs event handler for timer interrupt
-    EXTRN   IllegalEventHandler:NEAR
-    EXTRN   InitDisplay:NEAR
     
-    ; This was written by Prof. George
-    EXTRN   DisplayTest:NEAR        ; test function for display routines 
-    
+    EXTRN   InitKeypad:NEAR
+
         
 START:  
 
@@ -77,15 +78,14 @@ MAIN:
 
     CALL    InitTimer               ;initialize the internal timer
 
-    CALL    InitDisplay				;clear display and initialize muxing variables
+    CALL    InitKeypad				; initialize keypad scanning variables and 
+									; 	open keypad port for use 
 
     STI                             ;and finally allow interrupts.
-    
-
-    CALL    HW54Test 	    		; call the test code
+  
 
 Forever: 
-JMP    Forever                 ;sit in an infinite loop, nothing to
+	JMP    Forever                 ;sit in an infinite loop, nothing to
                                         ;   do in the background routine
         HLT                             ;never executed (hopefully)
         
@@ -98,6 +98,7 @@ CODE    ENDS
 
 
 ; the data segment 
+; initialized but empty so we can set up DGROUP 
 
 DATA        SEGMENT     PUBLIC      'DATA'
 
