@@ -1,6 +1,7 @@
 # Ignore the folders 
 new 
 old
+turnin
 
 # Ignore .lst and .obj 
 *.lst

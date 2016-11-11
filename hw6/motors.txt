@@ -1,0 +1,282 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                            ;
+;  							     Motor Routines                              ;
+;                           	   Homework 6        		                 ;
+;                                   EE/CS 51                                 ;
+;                                                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; The functions here will control the DC motors and laser for the Robotrike. The 
+; functions included are: 
+; 	SetMotorSpeed - sets the speed of the RoboTrike, sets the direction of movement
+; 	GetMotorSpeed - get the current speed setting for the RoboTrike
+; 	GetMotorDirection - get the current direction of movement setting for the RoboTrike
+; 	SetLaser - turn on or turn off the laser
+; 	GetLaser - get the current laser status (on or off)
+;	InitRobot - initializes variables responsible for robot direction, speed, and laser status 
+;
+; The MotorTimerEventHandler is not outlined here, but it is needed for the final 
+; version of this assignment. Also, the initiation code for the timer is not included 
+; here either. 
+
+; Revision History:
+;     11/06/16  	Jennifer Du      initial revision
+;
+
+;
+;
+; SetMotorSpeed
+;
+;
+; Description:  	This function sets the speed of the robot to the passed-in 
+;					speed argument, and sets the angle of movement of the robot 
+; 					to the passed-in angle argument. 
+;
+; Operation:    	The speed will be set to the speed argument passed in (less 
+; 					than 65534), and will cause the robot to move at that speed. 
+; 					If the speed argument is equal to 65535, then the current 
+; 					speed of the robot's movement will not be changed. The speed 
+; 					will be changed from a number between 0 and 65534 to between 
+; 					-127 to 127, where the negative numbers mean reverse direction. 
+; 
+; 					The angle will be set to the angle argument passed in. An 
+; 					angle of 0 means the direction straight ahead relative to the 
+; 					Robotrike's "face", and an angle of -32768 indicates that the 
+; 					current direction of motion will not be changed. 
+
+; Arguments:        speed (AX) - absolute speed at which the robot will run.
+; 					angle (BX) - signed angle at which the robot is to move 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: 
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           Motor will respond to change in direction or angle according to 
+; 					the arguments passed to this function.
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;	          
+Pseudocode:
+
+	if speed = 65535 and angle = -32768: 
+		don't change anything
+
+	else: 		; we need to change things 
+		if speed != 65535: 						; update speed and then calculate 
+			robotSpeed = speed
+			
+		if angle != -32768: 					; update angle and then calculate 
+			robotAngle = angle (mod 360)
+			 
+		robotSpeed = (robotSpeed mod 256)-127 	; speed must be between -127 and 127
+		
+		Vx = robotSpeed * cos(robotAngle)	; cos and sin values will be looked up in tables 
+		Vy = robotSpeed * sin(robotAngle)	; calculating velocity in x and y directions 
+		
+		; calculate counts for how long each motor should be on to achieve speed 
+		m1 = Vx * 1 + Vy * 0					; pulse width value for motor 1 			
+		m2 = Vx * (-1/2) + Vy * (-sqrt(3)/2)	; pulse width value for motor 2 			
+		m3 = Vx * (-1/2) + Vy * (sqrt(3)/2) 	; pulse width value for motor 3 			
+		
+		pulseWidth[] = (m1, m2, m3)				; store values into the array 
+		
+	RET 
+
+;
+;
+;
+; GetMotorSpeed 
+;
+; Description:  	This function returns the current speed setting for the 
+; 					RoboTrike in AX. This function will always return a speed 
+; 					between 0 and 65534. 
+;
+; Operation:    	Moves the variable robotSpeed into AX and then returns. 
+; Arguments:        None. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: robotSpeed - current speed of the robot 
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           None. 
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;
+; Pseudocode:
+
+	AX = robotSpeed 
+	RET 
+
+
+;
+;
+; GetMotorDirection
+;
+; Description:  	This function returns the current direction of movement 
+; 					of the Robotrike as an angle in degrees in AX. Angles are 
+; 					measured clockwise, and an angle of 0 means the Robotrike 
+; 					is moving straight forward with respect to the direction 
+; 					it's facing. Angles will range from 0 to 359 degrees. 
+;
+; Operation:    	Moves the variable robotAngle into AX and then returns.
+; Arguments:        None. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: robotAngle - current direction the robot is facing 
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           None.
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;
+; Pseudocode:
+
+	AX = robotAngle
+	RET 
+
+
+;
+;
+; SetLaser   
+;
+; Description:  	The function is passed a single argument (onoff) in AX that 
+; 					indicates whether to turn the RoboTrike laser on or off. A 
+; 					zero value turns the laser off and a non-zero value turns it on.
+;
+; Operation:    	This function sets the shared variable laserStatus to the value 
+; 					of the onoff argument passed into this function.
+; Arguments:        onoff (AX) - turns laser off if equal to 0, and on otherwise. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: 
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           None. 
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;
+;
+Pseudocode: 
+
+	laserStatus = onoff 
+	RET 
+;
+;
+; GetLaser  
+;
+; Description:  	This function returns the status of the Robotrike laser 
+; 					in AX. A value of 0 means the laser is off, and a non-zero 
+; 					value means the laser is on. 
+;
+; Operation:    	Moves the shared variable laserStatus into AX and then returns. 
+
+; Arguments:        None. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: 
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           None. 
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;
+; Pseudocode:
+
+	AX = laserStatus
+	RET 
+
+;
+;
+;
+; InitRobot   
+;
+; Description:  	This function initializes the motor variables that will be 
+; 					set and changed throughout the Robotrike's running. 
+;
+; Operation:    	Sets robotSpeed to 0 (not moving), robotAngle to 0 (straight 
+; 					ahead), laserAngle to 0 (straight ahead), laserStatus to 0 
+; 					(off), and the pulse width array and counter variables to 
+; 					0. 
+; Arguments:        None. 
+; Return Value:     None.
+;
+; Local Variables:  None. 
+; Shared Variables: robotSpeed - current speed of the robot 
+;					robotAngle - current angle of robot's movement 
+;					laserAngle - current angle of robot's laser 
+;					laserStatus - current on/off status of laser 
+;					pulseWidth - array storing pulse width values for each motor 
+;					pulseWidthCntr - counts number of iterations of motorEventHandler;
+;							keeps track of motor status in terms of pulse width times
+;	
+; Global Variables:	None.
+; 
+; Input:            None.
+; Output:           None. 
+;
+; Error Handling: 	None. 
+;
+; Algorithms: 		None. 
+; Data Structures:  None.
+;
+Pseudocode:
+
+	robotSpeed = 0
+	robotAngle = 0
+	laserAngle = 0
+	laserStatus = 0
+	pulseWidth = [0,0,0]
+	pulseWidthCntr = 0 
+	
+;
+; the data segment (SHARED VARIABLES)
+
+robotSpeed	
+	; current speed of the robot 
+	; possible values: 0 to 65534 are speeds, 65535 is "do not change"
+    	
+robotAngle		
+	; current angle of robot's movement with respect to the direction it faces 	
+	; possible values: -32767 to 32767 are angles, -32768 is "do not change"
+	
+laserAngle		
+	; current angle of robot's laser with respect to the direction the robot faces 
+	; possible values: -32767 to 32767 are angles, -32768 is "do not change"
+	
+laserStatus		
+	; current status of laser
+	; on (1) or off (0)
+	
+pulseWidth[motor1pwm, motor2pwm, motor3pwm] 	
+	; 3 driving motors: motor 1, motor 2, motor 3 each need a number 
+	; to count to to determine what percentage of the time they need to be 
+	; turned on to achieve a speed (percent out of 127)
+	
+pulseWidthCntr
+	; counter that keeps track of place in the pwm cycle each motor is at  	
+	

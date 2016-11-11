@@ -1,0 +1,17 @@
+NAME 	INITPP
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                            ;
+;					    Initialize Parallel Ports - Motors                   ;
+;                           	   Homework 6        		                 ;
+;                                   EE/CS 51                                 ;
+;                                                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+offset is 3 
+control word is 10000000B
+pcs3
+
+write a thing to the parallel chip address to initialize
+then write things to the motor port b 
