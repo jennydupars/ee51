@@ -1,17 +1,14 @@
-NAME 	INITPP
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                                                            ;
-;					    Initialize Parallel Ports - Motors                   ;
-;                           	   Homework 6        		                 ;
+;                                  COMMON.INC                                ;
 ;                                   EE/CS 51                                 ;
+;                    Include file for commonly used constants                ;
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; This file contains commonly used constants. 
 
-offset is 3 
-control word is 10000000B
-pcs3
+; Word and byte size:
 
-write a thing to the parallel chip address to initialize
-then write things to the motor port b 
+WORDSIZE        EQU         0002H       ; 1 word is 2 bytes
+BYTESIZE        EQU         0001H       ; 1 byte is 1 byte 

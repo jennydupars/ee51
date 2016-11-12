@@ -8,8 +8,8 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-ParallelPortCtrlReg  EQU  0180H
-ParallelPortVal      EQU  01000000B  ; control word for chip
+ParallelPortCtrlReg  EQU  0183H
+ParallelPortVal      EQU  10000000B  ; control word for chip
                                      ; 0------- mode set inactive 
                                      ; -0000--- group A settings (port A and upper port C)
                                      ; -----0-- set mode 0 

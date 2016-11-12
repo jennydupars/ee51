@@ -10,7 +10,7 @@
 
 ; The functions here will control the DC motors and laser for the Robotrike. The 
 ; functions included are: 
-; 	MotorEventHandler - 
+; 	MotorEventHandler - updates the movements of Robotrike's motors and laser status 
 ; 	SetMotorSpeed - sets the speed of the RoboTrike, sets the direction of movement
 ; 	GetMotorSpeed - get the current speed setting for the RoboTrike
 ; 	GetMotorDirection - get the current direction of movement setting for the RoboTrike
@@ -29,17 +29,15 @@
 ;
 ;Include files 
 $INCLUDE(motors.inc)
+$INCLUDE(common.inc)
 
 ; External functions and tables 
-	EXTRN Sin_Table: WORD 			; is this declaration right 
-	EXTRN Cos_Table: WORD 			; is this declaration right 
+	EXTRN Sin_Table: WORD 			; table of sin values  
+	EXTRN Cos_Table: WORD 			; table of cosine values 
 
-; set up code and data groups
+
 CGROUP	GROUP	CODE
 DGROUP	GROUP	DATA
-
-; segment register assumptions
-	
 
 CODE SEGMENT PUBLIC 'CODE'
 
@@ -52,14 +50,24 @@ CODE SEGMENT PUBLIC 'CODE'
 ;
 ; Description:  	This function outputs the correct values to the parallel port 
 ; 					that controls the motors' and laser's status and direction. 
+;                   This function is called at every interrupt, and checks to see 
+;                   if each motor should or shouldn't be on based on the pulse 
+;                   width counter variable. 
 ;
-; Operation:    	
+; Operation:    	The function checks to see if any of the motors need to be 
+;                   turned on or turned off, and does so accordingly. It also checks 
+;                   to see if the laser needs to be on or off, and sets the value 
+;                   written to the ports such that the motors and laser are turned 
+;                   on or off at each instance. 
 
-; Arguments:        
+; Arguments:        None. 
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
-; Shared Variables: 
+; Shared Variables: pulseWidth - array of pulse width counts corresponding to each motor 
+;                   pulseWidthCnt - counter to implement pulse width modulation movement 
+;                   motorOutVal - value to be written to port B to change I/O devices 
+;                   laserStatus - status of laser (on or off) 
 ; Global Variables:	None.
 ; 
 ; Input:            None.
@@ -69,33 +77,42 @@ CODE SEGMENT PUBLIC 'CODE'
 ;
 ; Error Handling: 	None. 
 ;
+; Registers Used:   flags, AX, BX, CX, DX 
+; Stack Depth:      0 words
+;
 ; Algorithms: 		None. 
 ; Data Structures:  None.
 
 MotorEventHandler 	PROC 	NEAR
 					PUBLIC 	MotorEventHandler
 
+ 
+                    
 	MOV 	BX, 0
 UpdateMotorStatus:
 	XOR 	AX, AX 				; clear register 
 	MOV 	AL, pulseWidth[BX]
-	CMP 	AL, 0 						; is the speed positive or negative 
-	JL		GetAbsValOfNegSpeed 
+	
+	TEST    AL, NEG_SIGN_SET    ; test to see if sign bit is set (negative number)
+    JNZ     GetAbsValOfNegSpeed ; if test results in 1, then sign bit is set 
 	;JG		CompareToPulseWidthCount
 	
 CompareToPulseWidthCount: 
-	CMP 	AL, pulseWidthCnt 			; see if abs value of speed is greater or less 
+	CMP 	pulseWidthCnt, AL 	
 	JGE 	TurnOffMotor
 	JL		TurnOnMotor
 	
 GetAbsValOfNegSpeed: 
 	NEG 	AL							; turn speed positive 
+    INC     AL                          ; two's complement
 	JMP 	CompareToPulseWidthCount 
 	
 TurnOnMotor:
-	CMP 	pulseWidth[BX], 0 				; see if the speed is less than 0 
-	JL		SpeedIsNegative 				; if speed < 0, use the right thing  		
-	JGE 	SpeedIsPositive	
+	MOV     AL, pulseWidth[BX] 				; see if the speed is less than 0 
+    TEST    AL, NEG_SIGN_SET    ; test to see if sign bit is set (negative number)
+    JNZ     SpeedIsNegative ; if test results in 1, then sign bit is set 
+	JZ		SpeedIsPositive 				; if speed < 0, use the right thing  		
+		
 
 TurnOffMotor: 
 	MOV 	DX, BX							; save index 
@@ -134,40 +151,40 @@ UpdateNextMotor:
 	CMP 	BX, NUM_MOTORS					; if we have gone through all 3 motors 
 	JE 		IncrementPWCounter
 	JMP 	UpdateMotorStatus
-
 	
 IncrementPWCounter:
 	INC 	pulseWidthCnt
 	XOR 	AX, AX 
 	MOV 	AL, pulseWidthCnt
 	MOV 	DX, 0 
-	MOV 	CX, 128 
+	MOV 	CX, PWM_MAX_COUNT_VAL
 	DIV 	CX 
-	MOV 	pulseWidthCnt, DL 
-
+	MOV 	pulseWidthCnt, DL
 	
 UpdateLaser: 
-	CMP 	laserStatus, 0 
+	CMP 	laserStatus, LASER_OFF 
 	JZ 		TurnOffLaser 
-	JNZ 	TurnOnLaser 
+	;JNZ 	TurnOnLaser 
 	
-TurnOffLaser: 
-	MOV 	AL, LASER_OFF
-	OR 		AL, motorOutVal 
-	MOV 	motorOutVal, AL 
-	JMP 	OutputToPort
-		
 TurnOnLaser: 
-	MOV 	AL, LASER_ON
-	OR 		AL, motorOutVal 
+	MOV 	AL, motorOutVal 
+	OR 		AL, LASER_ON
 	MOV 	motorOutVal, AL
+	JMP 	OutputToPort
+    
+TurnOffLaser: 
+	MOV 	AL, motorOutVal
+    OR      AL, LASER_ON
+	XOR		AL, LASER_ON 
+	MOV 	motorOutVal, AL 
 	;JMP 	OutputToPort
 	
 OutputToPort: 
 	MOV 	DX, MOTOR_OUT_LOC 
 	MOV 	AL, motorOutVal 
 	OUT 	DX, AL 
-	
+
+    
 EndMotorEventHandler: 
 	RET 
 	
@@ -187,14 +204,14 @@ MotorEventHandler 	ENDP
 ; 					than 65534), and will cause the robot to move at that speed. 
 ; 					If the speed argument is equal to 65535, then the current 
 ; 					speed of the robot's movement will not be changed. The speed 
-; 					will be changed from a number between 0 and 65534 to between 
-; 					-127 to 127, where the negative numbers mean reverse direction. 
+; 					will be changed to form Q0.15, where the value is a fraction 
+;                   of the max speed. 
 ; 
-; 					The angle will be set to the angle argument passed in. An 
-; 					angle of 0 means the direction straight ahead relative to the 
-; 					Robotrike's "face", and an angle of -32768 indicates that the 
-; 					current direction of motion will not be changed. 
-
+; 					The angle will be set to the angle argument passed in. The angle 
+;                   will be turned into a value between 0 and 359. A passed-in angle 
+;                   of -32768 indicates that the current direction of motion will 
+;                   not be changed. 
+;
 ; Arguments:        speed (AX) - absolute speed at which the robot will run.
 ; 					angle (BX) - signed angle at which the robot is to move 
 ; Return Value:     None.
@@ -202,13 +219,15 @@ MotorEventHandler 	ENDP
 ; Local Variables:  None. 
 ; Shared Variables: robotSpeed - speed of movement of robot 
 ; 					robotAngle - angle of movement of robot 
-; 					pulseWidth - array storing counts of each motor's behavior 
+; 					pulseWidth - array storing each motor's PWM value 
 ; Global Variables:	None.
 ; 
 ; Input:            None.
 ; Output:           None. 
 ;
 ; Error Handling: 	None. 
+; Registers Used:   flags, AX, BX, CX, DX, SI
+; Stack Depth:      1 word
 ;
 ; Algorithms: 		None. 
 ; Data Structures:  None.
@@ -217,94 +236,94 @@ MotorEventHandler 	ENDP
 SetMotorSpeed 	PROC	NEAR
 				PUBLIC 	SetMotorSpeed
 
+    AND     motorOutVal, 00H
+    
+                
+                
 CheckSpeedHold:
-	CMP 	AX, HOLD_SPEED_VAL			; HOLD_SPEED_VAL EQU 65535d
-	JNE 	ChangeSpeed
-	CMP 	BX, HOLD_ANGLE_VAL
-	JNE		ChangeAngle
-	JMP 	EndSetMotorSpeed
+	CMP 	AX, HOLD_SPEED_VAL			; if speed is set to no-change value 
+	JNE 	ChangeSpeed                     ; not no-change: jmp and change speed 
+	CMP 	BX, HOLD_ANGLE_VAL          ; test to see if angle should be changed 
+	JNE		ChangeAngle                     ; if it should be changed 
+	JMP 	EndSetMotorSpeed            ; if values pass these tests then end function, no change 
 
 ChangeSpeed:
-	;MOV 	CX, 128
-	;IDIV 	CX
-	;SUB 	DX, 256 
-	;MOV 	robotSpeed, DX 	
-	;MOV 	robotSpeed, AX
 	
-	SHR 	AX, 1 						; turn it into Q0.15
-	MOV 	robotSpeed, AX 
+	SHR 	AX, 1 						; turn value into Q0.15 form 
+	MOV 	robotSpeed, AX              ; then store as official robot speed 
 
 CheckAngleHold: 
-	CMP 	BX, HOLD_ANGLE_VAL
-	JE 		SetNewDirection
-	JNE		ChangeAngle
+	CMP 	BX, HOLD_ANGLE_VAL          ; if angle should be held 
+	JE 		SetNewDirection             ; just go set the new direction with old angle val 
+	JNE		ChangeAngle                 ; if not holding angle, change it 
 
 ChangeAngle: 
-	MOV 	CX, TOTAL_DEGREES 
-	MOV 	AX, BX 					; move robot anlge into AX to divide 
-	CWD 
+	MOV 	CX, TOTAL_DEGREES           ; signed divide angle value by 360  
+	MOV 	AX, BX 					        ; to take the signed remainder as the 
+	CWD                                     ; angle between 0 and 360 
 	IDIV 	CX  
 	
-	CMP 	DX, 0 
+	CMP 	DX, 0                       ; see if remainder (angle) is positive or not 
 	JGE 	ModAnglePositive
 	JL 		ModAngleNegative
 	
-ModAnglePositive:
-	MOV 	robotAngle, DX 
+ModAnglePositive:                       ; if angle is positive 
+	MOV 	robotAngle, DX                  ; just store value 
 	JMP 	SetNewDirection
 	
 ModAngleNegative:
-	ADD 	DX, TOTAL_DEGREES
-	MOV		robotAngle, DX
-	;JMP 	SetNewDirection
+	ADD 	DX, TOTAL_DEGREES           ; if angle is negative
+	MOV		robotAngle, DX                  ; store value after making it a value 
+	;JMP 	SetNewDirection                 ; between 0 and 359 (by adding 360) 
 	
-SetNewDirection: 
-
+SetNewDirection:                        ; after setting new angle and speed (if applicable) 
+                                            ; calculate motors' PWM values 
 	MOV 	BX, robotAngle 
-	SHL 	BX, 1 			; multiply angle by 2 to get the index in cos table 
+	SHL 	BX, 1 			            ; double angle val to get the index in cos table (since word sized elements) 
+
+                                    ; calculate speed in x direction 
+	MOV 	AX, CS:Cos_Table[BX]		; grab the cosine value 
+	MOV 	CX, robotSpeed              
+	IMUL 	CX                          ; signed multiply speed by the cos(angle) = velocity in x direction 
+	MOV 	Vx, DX 				        ; truncate to DX 
 	
-	MOV 	AX, CS:Cos_Table[BX]			; are word tables indexed 0, 1, 2... or 0, 2, 4, ...///////////// 
-	MOV 	CX, robotSpeed
-	IMUL 	CX
-	MOV 	Vx, DX 				; or do I move in DX for Q0.15 stuff////////////////////////////////////// 
+                                    ; calculate speed in y direction 
+	MOV 	AX, CS:Sin_Table[BX]        ; grab sine value 
+	MOV 	CX, robotSpeed              ; signed multiply speed by the sine of the 
+	IMUL 	CX                          ; angle 
+	MOV 	Vy, DX                      ; truncate to DX 
 	
-	MOV 	AX, CS:Sin_Table[BX]
-	MOV 	CX, robotSpeed
-	IMUL 	CX 
-	MOV 	Vy, DX 
-	
-	MOV 	BX, 0 
+	MOV 	BX, 0                       ; initiate counter to loop through PWM array and update values 
 FillPulseWidthArray: 
 	
-	CMP 	BX, 3
-	JE 		EndSetMotorSpeed
-	;JNE 	keep calculating 
+	CMP 	BX, NUM_MOTORS              ; check end condition: if we've updated all motors' PWM val already 
+	JE 		EndSetMotorSpeed                ; if so, just end function 
+	;JNE 	keep calculating                
 	
-	SHL 	BX, 2 			; multiply BX by 4 to get the 0-1, 2-3, 4-5 elements per iteration 
-	MOV 	AX, Vx 
+	SHL 	BX, 2 			            ; multiply BX by 4 to get the 0-1, 2-3, 4-5 elements per iteration 
+	MOV 	AX, Vx                      
 	MOV 	CX, WORD PTR CS:Force_Table[BX]
 	IMUL 	CX
-	ADD 	BX, 2 					; move to next spot in array //////////////////////// word table indexing????
-	PUSH 	DX 					; save this DX 
+	ADD 	BX, WORDSIZE 				; move to next spot in force table (since table values are words)
+	PUSH 	DX 					        
 	
 	MOV 	AX, Vy 
 	MOV  	CX, WORD PTR CS:Force_Table[BX]
 	IMUL 	CX 
 	;ADD 	BX, 2
 	
-	MOV 	AX, DX  			; move the Vy*force into AX 
-	POP 	DX 					; move the Vx*force back into DX 
-	ADD 	AX, DX 				; add them together 
+	MOV 	AX, DX  			        ; move the Vy*force into AX 
+	POP 	DX 					        ; move the Vx*force back into DX 
+	ADD 	AX, DX 				        ; add them together 
 	
-	SAL 	AX, 2 				; what is this 
+	SAL 	AX, 2 				        ; shift sum left by 2 
 	MOV 	DX, AX 
 	
 	SUB 	BX, 2 		; subtract BX by 2 to get index of pulse width thing 
 	SHR 	BX, 2		; divide BX by 4 
-	;DEC 	BX 		; 2 divide by 2 minus 1 = 0, 4 divide by 2 = 2, minus 1 = 1 
-	MOV 	pulseWidth[BX], DH 			; only take DH (truncate)
-	INC 	BX 
-	JMP 	FillPulseWidthArray
+	MOV 	pulseWidth[BX], DH 			; only take DH (truncate) and place in pulse width array 
+	INC 	BX                  ; increment BX counter after undoing all changes to BX 
+	JMP 	FillPulseWidthArray ; move onto populating next spot in pulse width array 
 
 EndSetMotorSpeed: 
 	RET 
@@ -341,7 +360,7 @@ SetMotorSpeed 	ENDP
 GetMotorSpeed 	PROC	NEAR
 				PUBLIC	GetMotorSpeed
 	
-	MOV 	AX, robotSpeed
+	MOV 	AX, robotSpeed          ; move robotSpeed to AX for reading 
 	RET
 
 GetMotorSpeed 	ENDP
@@ -544,14 +563,14 @@ SetTurretElevation 	ENDP
 Force_Table 	LABEL 		BYTE
 				PUBLIC 		Force_Table
 	
-	DW 		07FFFH				; Fx for motor 1
-	DW 		00000H 					; Fy for motor 1
+	DW 		07FFFH		; Fx for motor 1
+	DW 		00000H 		; Fy for motor 1
 	
-	DW 		0C000H	; Fx for motor 2      1.1000000000000
-	DW 		09127H  		; Fy for motor 2      1.111
+	DW 		0C000H	    ; Fx for motor 2      1.1000000000000
+	DW 		09127H  	; Fy for motor 2      1.111
 	
 	DW 		0C000H  	; Fx for motor 3 
-	DW 		06ED9H  			; Fy for motor 3
+	DW 		06ED9H  	; Fy for motor 3
 	
 
 	; forward direction: use the even numbered ones (2n) for 0, 1, 2 = 0, 2, 4
