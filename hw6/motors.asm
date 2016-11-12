@@ -242,9 +242,22 @@ CheckAngleHold:
 ChangeAngle: 
 	MOV 	CX, TOTAL_DEGREES 
 	MOV 	AX, BX 					; move robot anlge into AX to divide 
+	CWD 
 	IDIV 	CX  
-	MOV 	robotAngle, DX 	
-
+	
+	CMP 	DX, 0 
+	JGE 	ModAnglePositive
+	JL 		ModAngleNegative
+	
+ModAnglePositive:
+	MOV 	robotAngle, DX 
+	JMP 	SetNewDirection
+	
+ModAngleNegative:
+	ADD 	DX, TOTAL_DEGREES
+	MOV		robotAngle, DX
+	;JMP 	SetNewDirection
+	
 SetNewDirection: 
 
 	MOV 	BX, robotAngle 
@@ -267,26 +280,28 @@ FillPulseWidthArray:
 	JE 		EndSetMotorSpeed
 	;JNE 	keep calculating 
 	
-	SHL 	BX, 1 			; multiply BX by 2 to get the 0-1, 2-3, 4-5 elements per iteration 
+	SHL 	BX, 2 			; multiply BX by 4 to get the 0-1, 2-3, 4-5 elements per iteration 
 	MOV 	AX, Vx 
 	MOV 	CX, WORD PTR CS:Force_Table[BX]
 	IMUL 	CX
-	INC 	BX 					; move to next spot in array //////////////////////// word table indexing????
+	ADD 	BX, 2 					; move to next spot in array //////////////////////// word table indexing????
 	PUSH 	DX 					; save this DX 
 	
-	MOV 	CX, Vy 
+	MOV 	AX, Vy 
 	MOV  	CX, WORD PTR CS:Force_Table[BX]
 	IMUL 	CX 
-	INC 	BX 
+	;ADD 	BX, 2
 	
 	MOV 	AX, DX  			; move the Vy*force into AX 
 	POP 	DX 					; move the Vx*force back into DX 
 	ADD 	AX, DX 				; add them together 
 	
-	SAL 	DX, 2 				; what is this 
+	SAL 	AX, 2 				; what is this 
+	MOV 	DX, AX 
 	
-	SHR 	BX, 1 		; divide BX by 2 to get index of pulse width thing 
-	DEC 	BX 		; 2 divide by 2 minus 1 = 0, 4 divide by 2 = 2, minus 1 = 1 
+	SUB 	BX, 2 		; subtract BX by 2 to get index of pulse width thing 
+	SHR 	BX, 2		; divide BX by 4 
+	;DEC 	BX 		; 2 divide by 2 minus 1 = 0, 4 divide by 2 = 2, minus 1 = 1 
 	MOV 	pulseWidth[BX], DH 			; only take DH (truncate)
 	INC 	BX 
 	JMP 	FillPulseWidthArray
@@ -398,7 +413,9 @@ GetMotorDirection 	ENDP
 SetLaser 	PROC	NEAR
 			PUBLIC	SetLaser
 	
+	
 	MOV 	laserStatus, AX
+	
 	RET
 
 SetLaser 	ENDP
@@ -527,8 +544,8 @@ SetTurretElevation 	ENDP
 Force_Table 	LABEL 		BYTE
 				PUBLIC 		Force_Table
 	
-	DW 		1					; Fx for motor 1
-	DW 		0 					; Fy for motor 1
+	DW 		07FFFH				; Fx for motor 1
+	DW 		00000H 					; Fy for motor 1
 	
 	DW 		0C000H	; Fx for motor 2      1.1000000000000
 	DW 		09127H  		; Fy for motor 2      1.111
