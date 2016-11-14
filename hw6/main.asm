@@ -9,32 +9,28 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-; Description:      This program tests the keypad routine functions and event 
-;					handling code for Homework #5. This is the main loop, and 
+; Description:      This program tests the motor routine functions and event 
+;					handling code for Homework #6. This is the main loop, and 
 ;                   it initializes the chip select logic, timers, interrupts, 
-;                   and keypad code. Then, it calls HW5Test, which 
-;					tests the functions defined in keypad.asm. 
+;                   parallel port, and motor variables. Then, it calls MotorTest, 
+; 					which tests the functions defined in motors.asm. 
 ;
-; Input:            User input to the keypad. 
+; Input:            None.
 ; Output:           None.
 ;
 ; Algorithms:       None.
 ; Data Structures:  None.
 ;
-; User Interface: 	The user will be able to use a keypad with 4 rows and 4 columns
-; 					to provide keypad input to the system.
-; Error Handling: 	??????????????????????????????????????????????????????????????????????????????????????
-;
 ; Known Bugs:       None.
 ;
 ; Revision History:
-;    11/02/2016         Jennifer Du     initial revision
-; 	 11/04/2016			Jennifer Du		commenting 
+;    11/08/2016         Jennifer Du     initial revision
+; 	 11/12/2016			Jennifer Du		commenting 
 
 
 ; include files
 $INCLUDE(motors.inc)
-;$INCLUDE(common.inc)
+
 
 
 CGROUP  GROUP   CODE
@@ -47,18 +43,18 @@ CODE    SEGMENT PUBLIC 'CODE'
 ;external function declarations
 
     ; These are contained in timer handler and event handler and chip select files
-    EXTRN   InitCS:NEAR             ; initializes chip select logic
-    EXTRN   InitTimer0:NEAR         ; initializes timer 0
-    EXTRN   ClrIRQvectors:NEAR      ; installs IllegalEventHandler for relevant 
-                                    ; interrupts in the vector table
-	EXTRN 	InitPP:NEAR 			; initializes parallel port 
-    EXTRN   InstallTimer0Handler:NEAR; installs event handler for timer 0 interrupts
+    EXTRN   InitCS:NEAR             	; initializes chip select logic
+    EXTRN   InitTimer0:NEAR         	; initializes timer 0
+    EXTRN   ClrIRQvectors:NEAR      	; installs IllegalEventHandler for relevant 
+										; interrupts in the vector table
+	EXTRN 	InitPP:NEAR 				; initializes parallel port 
+    EXTRN   InstallTimer0Handler:NEAR	; installs event handler for timer 0 interrupts
     
 	; test code 
-	EXTRN 	MotorTest:NEAR 
+	EXTRN 	MotorTest:NEAR 				; test code for motor routines 
 	
 	; a motors.asm routine 
-    EXTRN   InitRobot:NEAR			; initializes robot settings 
+    EXTRN   InitRobot:NEAR				; initializes robot settings 
 
         
 START:  
@@ -78,13 +74,13 @@ MAIN:
 
     CALL    ClrIRQVectors           ; initialize interrupt vector table
 
-    CALL    InstallTimer0Handler     ;install the event handler
+    CALL    InstallTimer0Handler    ;install the event handler
 
-    CALL    InitTimer0               ;initialize the internal timer
+    CALL    InitTimer0              ;initialize the internal timer
 
-	CALL 	InitPP 
+	CALL 	InitPP 					; initialize parallel ports 
 	
-    CALL    InitRobot				; initialize keypad scanning variables
+    CALL    InitRobot				; initialize robot motor and laser variables
 
     STI                             ;and finally allow interrupts.
   

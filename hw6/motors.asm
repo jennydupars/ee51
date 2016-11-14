@@ -8,9 +8,9 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; The functions here will control the DC motors and laser for the Robotrike. The 
+; The functions here will control the motors and laser for the Robotrike. The 
 ; functions included are: 
-; 	MotorEventHandler - updates the movements of Robotrike's motors and laser status 
+; 	MotorEventHandler - updates the statuses of Robotrike's motors and laser status 
 ; 	SetMotorSpeed - sets the speed of the RoboTrike, sets the direction of movement
 ; 	GetMotorSpeed - get the current speed setting for the RoboTrike
 ; 	GetMotorDirection - get the current direction of movement setting for the RoboTrike
@@ -23,13 +23,13 @@
 ; Revision History:
 ;     11/06/16  	Jennifer Du      initial revision
 ; 	  11/08/16 		Jennifer Du 	 writing assembly 
-;
+;	  11/12/16		Jennifer Du 	 commenting 
 
 
 ;
 ;Include files 
-$INCLUDE(motors.inc)
-$INCLUDE(common.inc)
+$INCLUDE(motors.inc)				; holds constants for calculations and output 
+$INCLUDE(common.inc)				; commonly used values 
 
 ; External functions and tables 
 	EXTRN Sin_Table: WORD 			; table of sin values  
@@ -52,13 +52,16 @@ CODE SEGMENT PUBLIC 'CODE'
 ; 					that controls the motors' and laser's status and direction. 
 ;                   This function is called at every interrupt, and checks to see 
 ;                   if each motor should or shouldn't be on based on the pulse 
-;                   width counter variable. 
+;                   width counter variable. It checks to see if the laser is still 
+;					on, and updates the output to the parallel port accordingly. 
 ;
 ; Operation:    	The function checks to see if any of the motors need to be 
-;                   turned on or turned off, and does so accordingly. It also checks 
-;                   to see if the laser needs to be on or off, and sets the value 
-;                   written to the ports such that the motors and laser are turned 
-;                   on or off at each instance. 
+;                   turned on or turned off, and if it is to be in the forward or 
+; 					reverse direction. It also checks to see if the laser needs to 
+; 					be on or off, and sets the value written to the parallel port 
+; 					such that the motors and laser are turned on or off at each instance.
+; 					It turns on and off motors based on if the pulse width count is less 
+; 					than or greater than the pulse width value set for that motor.
 
 ; Arguments:        None. 
 ; Return Value:     None.
@@ -86,104 +89,114 @@ CODE SEGMENT PUBLIC 'CODE'
 MotorEventHandler 	PROC 	NEAR
 					PUBLIC 	MotorEventHandler
 
- 
-                    
-	MOV 	BX, 0
+	MOV 	BX, 0				; initialize counter for looping through PWM array 
 UpdateMotorStatus:
 	XOR 	AX, AX 				; clear register 
-	MOV 	AL, pulseWidth[BX]
+	MOV 	AL, pulseWidth[BX]	; get PWM value for the motor (fraction out of 127D that 
+								; the motor should be on to achieve desired speed)
 	
 	TEST    AL, NEG_SIGN_SET    ; test to see if sign bit is set (negative number)
-    JNZ     GetAbsValOfNegSpeed ; if test results in 1, then sign bit is set 
+    JNZ     GetAbsValOfNegSpeed ; if test results in 1, then sign bit is set, get magnitude
 	;JG		CompareToPulseWidthCount
 	
-CompareToPulseWidthCount: 
-	CMP 	pulseWidthCnt, AL 	
-	JGE 	TurnOffMotor
-	JL		TurnOnMotor
+CompareToPulseWidthCount: 		
+	CMP 	pulseWidthCnt, AL 	; compare pulse width count to the motor's PWM value 
+	JGE 	TurnOffMotor		; if pulseWidthCnt is greater than PWM value, turn off motor 
+	JL		TurnOnMotor			; if pulseWidthCnt is less than PWM value, turn on motor 
 	
-GetAbsValOfNegSpeed: 
-	NEG 	AL							; turn speed positive 
-    INC     AL                          ; two's complement
-	JMP 	CompareToPulseWidthCount 
+GetAbsValOfNegSpeed: 			; get magnitude of a negative value 
+	NEG 	AL							; turn speed positive into complement
+    INC     AL                          ; add 1 to attain two's complement
+	JMP 	CompareToPulseWidthCount 	; then go compare to the current PWM count 
 	
 TurnOnMotor:
-	MOV     AL, pulseWidth[BX] 				; see if the speed is less than 0 
-    TEST    AL, NEG_SIGN_SET    ; test to see if sign bit is set (negative number)
-    JNZ     SpeedIsNegative ; if test results in 1, then sign bit is set 
-	JZ		SpeedIsPositive 				; if speed < 0, use the right thing  		
+	MOV     AL, pulseWidth[BX] 		; see if the speed is less than 0 (reverse direction)
+    TEST    AL, NEG_SIGN_SET    	; test to see if sign bit is set (negative number)
+    JNZ     SpeedIsNegative 		; if test results in 1, then sign bit is set (negative)
+	JZ		SpeedIsPositive 			; else, the speed is positive
 		
 
-TurnOffMotor: 
-	MOV 	DX, BX							; save index 
-	SHL 	BX, 1							; multiply by 2 to get 0, 2, 4 index in table 
-	MOV 	AL, motorOutVal 
-	MOV 	CL, CS:Motor_Direction_Table[BX]	; motor direction table (backwards direction) has 11 in a row for index 2n to 2n+1 for motor n
-	OR 		AL, CL 								; sets relevant bits to 11 in AX
-	XOR 	AL, CL 							; matching bits make the relevant bits in AX go to 00 
-	MOV 	motorOutVal, AL					
-	MOV 	BX, DX 							; restore index 
-	JMP 	UpdateNextMotor
+TurnOffMotor: 			; in the case that PWM count is greater than the PWM value for motor
+	MOV 	DX, BX						; save index in PWM motors array 
+	SHL 	BX, 1						; multiply by 2 to get 0, 2, 4 index in table 
+    MOV 	AL, motorOutVal 			
+	MOV 	CL, CS:Motor_Direction_Table[BX]	; motor direction table (backwards direction) 
+												; has 1's at index 2n to 2n+1 for motor n. 
+												; We will use this to select these specific 
+												; bits to change to 0 (turn off motor)
+	OR 		AL, CL 						; sets relevant bits to 11 in AL
+	XOR 	AL, CL 						; matching bits make the relevant bits in AL become 00
+											; without changing the bits corresponding to other 
+											; motors in motorOutVal 
+	MOV 	motorOutVal, AL				; move updated motor output value into variable 
+	MOV 	BX, DX 						; restore index of motor (in PWM motors array)
+	JMP 	UpdateNextMotor			; then, update the next motor's status 
 
-SpeedIsPositive:
-	MOV 	AL, motorOutVal
-	MOV 	DX, BX
-	SHL 	BX, 1 							; multiply by 2 since each motor has 2 entries (want the first one) 0, 2, 4
-	MOV 	CL, CS:Motor_Direction_Table[BX]
-	OR 		AL, CL 
-	MOV 	motorOutVal, AL
-	MOV 	BX, DX 							; move index back into BX  
-	JMP 	UpdateNextMotor
+SpeedIsPositive:		; in the case that the PWM count is less than the PWM value for a motor 
+						; and we want the forward motor direction
+	MOV 	AL, motorOutVal				; get current motor output value to be modified 
+	MOV 	DX, BX						; save index in PWM motors array 
+	SHL 	BX, 1 						; multiply motor number by 2 since each motor has 
+										; 2 entries in motor direction table (want even index)
+	MOV 	CL, CS:Motor_Direction_Table[BX]	; 0, 2, or 4 indexed in the table correspond to 
+												; forward direction
+	OR 		AL, CL 						; save bits corresponding to other motors and laser, 
+										; update bits corresponding to current motor 
+	MOV 	motorOutVal, AL				; update motor output value 
+	MOV 	BX, DX 						; move index back into BX  
+	JMP 	UpdateNextMotor				; move to updating next motor 
 	
-SpeedIsNegative:
-	MOV 	DX, BX 							; save correct index 
-	MOV 	AL, motorOutVal
-	SHL 	BX, 1 							; multiply by 2 since each motor has 2 entries (want 1, 3, 5)
-	INC 	BX 								; want 2n + 1 to get the right index 
+SpeedIsNegative:		; in the case that the PWM count is less than the PWM value for a motor 
+						; and we want the reverse motor direction 
+	MOV 	DX, BX 						; save index (current motor we're working on)
+	MOV 	AL, motorOutVal					
+	SHL 	BX, 1 						; multiply motor index by 2 since each motor has 
+											; 2 entries in motor direction table (want 1, 3, 5)
+	INC 	BX 								; want odd indices for reverse direction (2n+1)
 	MOV 	CL, CS:Motor_Direction_Table[BX]
-	OR 		AL, CL 
-	MOV 	motorOutVal, AL 
-	MOV 	BX, DX 							; restore correct index
-	JMP 	UpdateNextMotor
+	OR 		AL, CL 						; preserve bits corresponding to other motors and laser,
+										; but update the relevant bits 
+	MOV 	motorOutVal, AL 			; update motor output value 
+	MOV 	BX, DX 					; restore correct index of the motors in PWM array 
+	JMP 	UpdateNextMotor			; move to updating next motor 
 
 UpdateNextMotor: 
-	INC 	BX 
-	CMP 	BX, NUM_MOTORS					; if we have gone through all 3 motors 
-	JE 		IncrementPWCounter
-	JMP 	UpdateMotorStatus
+	INC 	BX 						; increment motor counter (move to next motor)
+	CMP 	BX, NUM_MOTORS			; if we have gone through all 3 motors,
+	JE 		IncrementPWCounter			; then we're done with motors. update PWM count 
+	JMP 	UpdateMotorStatus		; else, update motorOutVal for next motor 
 	
-IncrementPWCounter:
-	INC 	pulseWidthCnt
-	XOR 	AX, AX 
-	MOV 	AL, pulseWidthCnt
-	MOV 	DX, 0 
-	MOV 	CX, PWM_MAX_COUNT_VAL
-	DIV 	CX 
-	MOV 	pulseWidthCnt, DL
+IncrementPWCounter:		; when we're done with updating motor statuses, increment PWM count  
+	INC 	pulseWidthCnt			; increment here!
+	XOR 	AX, AX 					
+	MOV 	AL, pulseWidthCnt		; want to divide pulseWidthCnt to get mod (maxCount)
+	MOV 	DX, 0 					; clear DX before dividing 
+	MOV 	CX, PWM_MAX_COUNT_VAL	
+	DIV 	CX						; divide by maximum count 
+	MOV 	pulseWidthCnt, DL		; and take the remainder 
 	
 UpdateLaser: 
-	CMP 	laserStatus, LASER_OFF 
-	JZ 		TurnOffLaser 
+	CMP 	laserStatus, LASER_OFF 	; If the laser is off, 
+	JZ 		TurnOffLaser 				; update motor output value to turn off laser  
 	;JNZ 	TurnOnLaser 
 	
-TurnOnLaser: 
-	MOV 	AL, motorOutVal 
-	OR 		AL, LASER_ON
-	MOV 	motorOutVal, AL
-	JMP 	OutputToPort
+TurnOnLaser: 						; Otherwise turn laser on 
+	MOV 	AL, motorOutVal 		
+	OR 		AL, LASER_ON			; preserve other bits, turn laser bit on 
+	MOV 	motorOutVal, AL			; update motor output value 
+	JMP 	OutputToPort			; then output the value to port b 
     
-TurnOffLaser: 
+TurnOffLaser: 						
 	MOV 	AL, motorOutVal
-    OR      AL, LASER_ON
-	XOR		AL, LASER_ON 
-	MOV 	motorOutVal, AL 
+    OR      AL, LASER_ON			; preserve other bits, turn laser on 
+	XOR		AL, LASER_ON 			; XOR to turn 1 to 0 for sure 
+	MOV 	motorOutVal, AL 		; update motor output value 
 	;JMP 	OutputToPort
 	
 OutputToPort: 
-	MOV 	DX, MOTOR_OUT_LOC 
+	MOV 	DX, MOTOR_OUT_LOC 		; output motor output byte to port b 
 	MOV 	AL, motorOutVal 
 	OUT 	DX, AL 
-
     
 EndMotorEventHandler: 
 	RET 
@@ -226,7 +239,7 @@ MotorEventHandler 	ENDP
 ; Output:           None. 
 ;
 ; Error Handling: 	None. 
-; Registers Used:   flags, AX, BX, CX, DX, SI
+; Registers Used:   flags, AX, BX, CX, DX
 ; Stack Depth:      1 word
 ;
 ; Algorithms: 		None. 
@@ -236,9 +249,8 @@ MotorEventHandler 	ENDP
 SetMotorSpeed 	PROC	NEAR
 				PUBLIC 	SetMotorSpeed
 
-    AND     motorOutVal, 00H
-    
-                
+    AND     motorOutVal, 00H            ; clear the motor output value everytime 
+                                        ; we change speed or direction 
                 
 CheckSpeedHold:
 	CMP 	AX, HOLD_SPEED_VAL			; if speed is set to no-change value 
@@ -300,28 +312,33 @@ FillPulseWidthArray:
 	JE 		EndSetMotorSpeed                ; if so, just end function 
 	;JNE 	keep calculating                
 	
-	SHL 	BX, 2 			            ; multiply BX by 4 to get the 0-1, 2-3, 4-5 elements per iteration 
+	SHL 	BX, 2 			        ; multiply BX by 4 (each element in the force table is 
+									; two bytes, and each motor has 2 values in the force 
+									; table). Thus we multiply by 4, or shift left by 2 bytes,
+									; to get the Vx force for our desired motor. 
 	MOV 	AX, Vx                      
 	MOV 	CX, WORD PTR CS:Force_Table[BX]
-	IMUL 	CX
+	IMUL 	CX							; perform operation Fx * Vx 
 	ADD 	BX, WORDSIZE 				; move to next spot in force table (since table values are words)
-	PUSH 	DX 					        
+	PUSH 	DX 					        ; save the truncated product 
 	
 	MOV 	AX, Vy 
 	MOV  	CX, WORD PTR CS:Force_Table[BX]
-	IMUL 	CX 
-	;ADD 	BX, 2
+	IMUL 	CX 							; perform operation Fy * Vy 
+	
 	
 	MOV 	AX, DX  			        ; move the Vy*force into AX 
 	POP 	DX 					        ; move the Vx*force back into DX 
-	ADD 	AX, DX 				        ; add them together 
+	ADD 	AX, DX 				        ; add them together (Vx*Fx + Vy*Fy) 
 	
-	SAL 	AX, 2 				        ; shift sum left by 2 
+	SAL 	AX, 2 				        ; get rid of extra 2 sign bits 
 	MOV 	DX, AX 
 	
-	SUB 	BX, 2 		; subtract BX by 2 to get index of pulse width thing 
-	SHR 	BX, 2		; divide BX by 4 
-	MOV 	pulseWidth[BX], DH 			; only take DH (truncate) and place in pulse width array 
+	SUB 	BX, 2 					; subtract BX by 2 to get index of pulse width thing 
+	SHR 	BX, 2					; divide BX by 4 (totally reverse changes 
+                                        ; made to index in PWM array)
+	
+	MOV 	pulseWidth[BX], DH 		; only take DH (truncate) and place in pulse width array 
 	INC 	BX                  ; increment BX counter after undoing all changes to BX 
 	JMP 	FillPulseWidthArray ; move onto populating next spot in pulse width array 
 
@@ -360,7 +377,7 @@ SetMotorSpeed 	ENDP
 GetMotorSpeed 	PROC	NEAR
 				PUBLIC	GetMotorSpeed
 	
-	MOV 	AX, robotSpeed          ; move robotSpeed to AX for reading 
+	MOV 	AX, robotSpeed          ; move robotSpeed to AX to return it 
 	RET
 
 GetMotorSpeed 	ENDP
@@ -396,7 +413,7 @@ GetMotorSpeed 	ENDP
 GetMotorDirection 	PROC	NEAR
 					PUBLIC	GetMotorDirection
 	
-	MOV 	AX, robotAngle
+	MOV 	AX, robotAngle      ; move robotAngle to AX to return it 
 	RET
 
 GetMotorDirection 	ENDP
@@ -433,7 +450,7 @@ SetLaser 	PROC	NEAR
 			PUBLIC	SetLaser
 	
 	
-	MOV 	laserStatus, AX
+	MOV 	laserStatus, AX         ; set the argument to shared variable laserStatus 
 	
 	RET
 
@@ -469,7 +486,7 @@ SetLaser 	ENDP
 GetLaser 	PROC	NEAR
 			PUBLIC	GetLaser
 
-	MOV 	AX, laserStatus
+	MOV 	AX, laserStatus     ; move laserStatus to AX to return it 
 	RET
 
 GetLaser 	ENDP
@@ -513,23 +530,23 @@ GetLaser 	ENDP
 InitRobot 	PROC	NEAR
 			PUBLIC	InitRobot
 
-Initvariables:
-	MOV 	robotSpeed, 0
-	MOV 	robotAngle, 0
-	MOV 	laserAngle, 0
-	MOV 	laserStatus, 0
-	MOV		pulseWidthCnt, 0
-	MOV 	Vx, 0
-	MOV 	Vy, 0 
-	MOV 	motorOutVal, 0
+Initvariables:						; set all to 0 for 
+	MOV 	robotSpeed, 0				; no speed 
+	MOV 	robotAngle, 0				; forward direction 
+	MOV 	laserAngle, 0				; forward laser 
+	MOV 	laserStatus, 0				; off laser 
+	MOV		pulseWidthCnt, 0			; no pulse width modulation count 
+	MOV 	Vx, 0						; zero velocity in x
+	MOV 	Vy, 0 						; and y directions 
+	MOV 	motorOutVal, 0				; nothing is output to port B 
 
-	MOV 	BX, 0
-InitPulseWidthArray:
-	MOV 	pulseWidth[BX], 0
+	MOV 	BX, 0						; initialize counter variable to loop 
+InitPulseWidthArray:					; through pulse width array and initialize 
+	MOV 	pulseWidth[BX], 0			; all values to 0 
 	INC 	BX
-	CMP 	BX, NUM_MOTORS
-	JE 		EndInitRobot
-	JNE		InitPulseWidthArray
+	CMP 	BX, NUM_MOTORS				; if the counter has reached number of motors 
+	JE 		EndInitRobot				; then we are done, and return.
+	JNE		InitPulseWidthArray			; if not, keep initializing PWM values for motors.
 
 EndInitRobot: 
 	RET 
@@ -566,8 +583,8 @@ Force_Table 	LABEL 		BYTE
 	DW 		07FFFH		; Fx for motor 1
 	DW 		00000H 		; Fy for motor 1
 	
-	DW 		0C000H	    ; Fx for motor 2      1.1000000000000
-	DW 		09127H  	; Fy for motor 2      1.111
+	DW 		0C000H	    ; Fx for motor 2      
+	DW 		09127H  	; Fy for motor 2      
 	
 	DW 		0C000H  	; Fx for motor 3 
 	DW 		06ED9H  	; Fy for motor 3
@@ -578,13 +595,13 @@ Force_Table 	LABEL 		BYTE
 Motor_Direction_Table 	LABEL 	BYTE
 						PUBLIC 	Motor_Direction_Table
 						; motor 1: 
-	DB 		00000001B 	; move forward
+	DB 		00000010B 	; move forward
 	DB 		00000011B 	; move backward 
 						; motor 2: 
-	DB 		00000100B 	; move forward 
+	DB 		00001000B 	; move forward 
 	DB 		00001100B 	; move backward 
 						; motor 3: 
-	DB 		00010000B 	; move forward 
+	DB 		00100000B 	; move forward 
 	DB 		00110000B 	; move backward 
 	
 

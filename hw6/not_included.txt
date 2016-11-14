@@ -1,0 +1,16 @@
+Files not included: 
+
+
+Initializing chip select: (unchanged from homework 5)
+InitCS.asm 
+InitCS.inc
+
+Event handler that manages interrupt service routines: (unchanged from homework 5)
+handlers.asm 
+handlers.inc 
+
+Commonly used constants include file: (unchanged from homework 5)
+common.inc 
+
+Given trigonometry constant tables: (given by assignment)
+trigtbl.asm 

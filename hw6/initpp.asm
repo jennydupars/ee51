@@ -9,7 +9,8 @@ NAME 	INITPP
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-; The function included in this file is for initializing the parallel port: 
+; The function included in this file is for initializing the parallel port so 
+; that we can output motor settings to it: 
 ; 		InitPP - initializes parallel port
 
 ; Revision History:
@@ -52,7 +53,7 @@ InitPP  PROC    NEAR
 
         MOV     DX, ParallelPortCtrlReg     ;setup to write to control register
         MOV     AX, ParallelPortVal
-        OUT     DX, AL          ;write ParallelPortVal to register 
+        OUT     DX, AL          			;write ParallelPortVal to register 
 
 
         RET                     ;done so return

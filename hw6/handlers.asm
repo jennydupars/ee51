@@ -65,12 +65,12 @@ InitClrVectorLoop:              ;setup to store the same handler 256 times
         MOV     ES, AX
         MOV     SI, 0           ;initialize SI to the first vector
 
-        MOV     CX, 256         ;up to 256 vectors to initialize
+        MOV     CX, NUM_IRQ_VECTORS   ;up to 256 vectors to initialize
 
 
 ClrVectorLoop:                  ;loop clearing each vector
                                 ;check if should store the vector
-					; address is 4x vector because vectors are 2 words 
+								; address is 4x vector because vectors are 2 words
         CMP     SI, 4 * FIRST_RESERVED_VEC
         JB      DoStore         ;if before start of reserved field - store it
         CMP     SI, 4 * LAST_RESERVED_VEC

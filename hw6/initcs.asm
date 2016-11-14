@@ -8,15 +8,13 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; The function included in this file is for initializing chip select for the keypad: 
+; The function included in this file is for initializing chip select for the 
+; motor routines: 
 ; 		InitCS - initializes chip select 
 
 ; Revision History:
 ;     11/09/16  	Jennifer Du      initial revision
-
-;external function declarations
-
-
+; 	  11/12/16 		Jennifer Du 	 commenting 
 
     
 ; include files 

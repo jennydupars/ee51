@@ -8,14 +8,15 @@
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; This file includes functions that handle interrupts and timing 
+; This file includes functions that handle interrupts and timing.
 
 ; Revision History:
 ;     11/09/16  	Jennifer Du      initial revision
 
 ;external function declarations
 
-    EXTRN   MotorEventHandler:NEAR             ; function for repeatedly checking keypad input 
+    EXTRN   MotorEventHandler:NEAR  ; function for repeatedly updating motor speed 
+                                    ; and direction and laser status 
 
     
 ; include files 
@@ -61,7 +62,8 @@ StartTimer0EventHandler:
     PUSH    DX  
 	
 CallMotorEventHandler: 
-	CALL 	MotorEventHandler
+	CALL 	MotorEventHandler		; call MotorEventHandler at every interrupt 
+									; to update motors and laser status 
 
 EndTimerEventHandler:
     MOV     DX, INTCtrlrEOI         ;send the EOI to the interrupt controller
