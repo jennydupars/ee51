@@ -1,0 +1,31 @@
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                            ;
+;                                   INT2.INC                                 ;
+;                                 Include File                               ;
+;                                                                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; INT2 Interrupt Definitions 
+
+; Interrupt Vectors
+INT2Vec         EQU     14               ;interrupt vector for INT2 interrupts 
+
+
+; Interrupt Controller Definitions
+
+; Addresses
+INTCtrlrCtrl    EQU     0FF3CH          ;address of interrupt controller for INT2 
+INTCtrlrEOI     EQU     0FF22H          ;address of interrupt controller EOI register
+
+; Register Values
+INTCtrlrCVal    EQU     00001H          ;set priority for INT2 to 1, set to edge-triggering, and enable  
+                                        ;00000000000-----  reserved
+                                        ;-----------0----  set to edge triggering 
+                                        ;------------0---  enable INT2 interrupt
+                                        ;-------------001  INT2 priority                    //////////////////////// shoudl my priority be 1?
+                                        
+INT2EOI         EQU     0000EH          ;INT2 EOI command 
+NonSpecEOI      EQU     08000H          ;Non-specific EOI command
+

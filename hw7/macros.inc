@@ -1,5 +1,5 @@
 $NOLIST 				////////////////////////////////////////////////////////////// is this right 
-
+                                                    //////////////////////////////////////////////////////////////////////////
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                                                            ;
 ;                                  MACROS.INC                                ;
@@ -22,7 +22,7 @@ $NOLIST 				////////////////////////////////////////////////////////////// is th
 ;    11/18/2016  Jennifer Du         initial revision
 
 
-; CLR
+; CLR                                                                                       ///////////////////////// is this macro right 
 ;
 ; Description:      This macro generates code to clear a register, which is
 ; 					passed in as reg. 
@@ -43,7 +43,7 @@ $NOLIST 				////////////////////////////////////////////////////////////// is th
 
 
 
-; SETBIT 
+; SETBIT                                                                              //////////////////// is this macro right 
 ;
 ; Description:      This macro generates code to set a bit in a register.
 ;

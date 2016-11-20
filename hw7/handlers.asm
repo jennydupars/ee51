@@ -22,8 +22,6 @@
     
 ; include files 
 $INCLUDE(handlers.inc)					; include file for handlers, interrupts 
-$INCLUDE(motors.inc)
-
 
 CGROUP  GROUP   CODE
 

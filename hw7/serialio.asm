@@ -26,18 +26,31 @@
 
 ; include files 
 $INCLUDE(serialio.inc)
-$INCLUDE(macros.inc)
+$INCLUDE(common.inc)
+$INCLUDE(queue.inc)
+;$INCLUDE(macros.inc)                                ;///////////////////////////////////////// how do i make macros work ///////////////////////////////////////////////
 
-CGROUP  GROUP   CODE
-DGROUP  GROUP   DATA
 
-CODE    SEGMENT PUBLIC 'CODE'
-
-        ASSUME  CS:CGROUP, DS:DGROUP
 	
-	; pre-written code used to populate event queue
+
+CGROUP	GROUP	CODE
+DGROUP	GROUP	DATA
+
+CODE SEGMENT PUBLIC 'CODE'
+
+		ASSUME	CS:CGROUP, DS:DGROUP
+	
+    
+    ; External functions
+
 	EXTRN 	EnqueueEvent:NEAR
-	
+    
+    EXTRN   Dequeue:NEAR
+    EXTRN   Enqueue:NEAR
+    EXTRN   QueueFull:NEAR
+    EXTRN   QueueInit:NEAR
+    EXTRN   QueueEmpty:NEAR
+
 ;
 ;
 ;
@@ -80,7 +93,7 @@ StartInitSerial:
 	PUSHA							; save registers 
 	
 InitializeTransmitQueue: 	
-	MOV 	SI, DS:OFFSET(transmitQueue)		; get address of transmit queue 
+	MOV 	SI, OFFSET(transmitQueue)		; get address of transmit queue 
 	MOV 	BL, SELECT_BYTE_SIZE	 			; move in 2nd argument QueueInit will take (size of each element)
 	
 	CALL 	QueueInit
@@ -153,9 +166,10 @@ SerialPutChar	PROC 	NEAR
 
 StartSerialPutChar: 
 	PUSHA							; save registers 
-	
+	MOV     CL, AL                       ; save AX's value (arg value) 
+    
 CheckTransmitQueueFull: 
-	MOV 	SI, DS:OFFSET(transmitQueue)
+	MOV 	SI, OFFSET(transmitQueue)
 	CALL 	QueueFull			
 	
 	JZ 		TransmitQueueIsFull
@@ -184,8 +198,11 @@ KickstartSerialChannel:
 	; JMP 	EnqueueCharToTransmitQueue
 
 EnqueueCharToTransmitQueue: 	; whether or not we need to kickstart, we enqueue char to transmit queue! 
-	MOV 	SI, DS:OFFSET(transmitQueue)		; don't need to redo it if i don't change it ///////////////////////////////
+	MOV 	SI, OFFSET(transmitQueue)		
 												; AL should already have char value to be enqueued 
+                                                
+    MOV     AL, CL                  ; restore AL with the value of argument  
+    
 	CALL 	Enqueue 	
 	
 EndSerialPutChar: 
@@ -194,8 +211,6 @@ EndSerialPutChar:
 SerialPutChar	ENDP 
 	
 
-;
-;
 ;
 ; SerialEventHandler
 ;
@@ -235,63 +250,36 @@ SerialEventHandler 		PROC 	NEAR
 StartSerialEventHandler: 
 	PUSHA 						; save registers 
 						
-ReadIIRValue: 
+ReadIIRValue: 								; i was jumping to the wrong place for a long time, did not recheck what IIR was after every iteration 
 	MOV 	DX, IIR_LOC 	
-	%CLR(AX)					; use macro defined in macros.inc to clear a register 
+	MOV     AX, 0000H           ; CLR(AX)					; use macro defined in macros.inc to clear a register 
 	IN 		AL, DX 
 	AND		AL, IIR_EVENT_MASK 				; get just the lowest 3 bits 
 	
 InterruptsPending: 
 	
-	%TESTBIT(AL, 0)				; test lowest bit (interrupt pending bit)	
-	JE 		EndSerialEventHandler	; if 1, then exit 
-	JNE 	GetInterruptEvent		; if bit is 0, then interrupts are pending. 
+	;TESTBIT(AL, 0)				; test lowest bit (interrupt pending bit)	 
+    TEST 	AL, 00000001B
+	JNZ 	EndSerialEventHandler	; if 1, then exit 
+	JZ	 	GetInterruptEvent		; if bit is 0, then interrupts are pending. 
 	
 GetInterruptEvent: 
-	SHR 	AL, 1 				; get rid of lowest bit to isolate value of interrupt 
-	MOV 	BX, AL 				; move value of interrupt into index register 
-	JMP 	CS:Event_Table[BX]	; jump to a place 
-		//////////////////////////////////////////////////////////////////////////////// do i do EOI somewhere here 
 	
-	; do i test the lowest bit again to see if i jump back to top /////////////////////////////////////////////////////////////////////
-	%TESTBIT(AL, 0)				; test lowest bit (interrupt pending bit)	
-	JE 		EndSerialEventHandler	; if 1, then exit 
-	JNE 	GetInterruptEvent		; if bit is 0, then interrupts are pending. 
+    ;SHR 	AX, 1 				; get rid of lowest bit to isolate value of interrupt 
+	MOV 	BX, AX 				; move value of interrupt into index register 
+	CALL 	CS:Event_Table[BX]	; call one of the functions 
+	
+    JMP     ReadIIRValue 
+	
+	
 	
 EndSerialEventHandler:
 	POPA						; restore registers 
-	IRET 						; do i do IRET here ////////////////////////////////////////////////////////////////////////////////
+	RET 						
 SerialEventHandler 		ENDP 
 
 
-		//////////////////////////////////////////////////////////// which of these 4 events do i need to enqueue 
 
-	read the IIR (interrupt identification register)
-		see which of these to do based on the set bits: 
-		
-		case1: 								; line status - when there's a serial error
-			AH = line_status_event_constant	; store these values here for enqueueEvent 
-			AL = line_status_regs_val 			; later (event constant in AH, val in 
-			CALL lineStatus 					; AL)
-		
-		case2:  							; modem status - read modem status register 
-			AH = modem_control_constant 	; store these values for enqueueEvent later 
-			AL = modem_control_regs_val 	
-			CALL modemStatus
-			
-		case3:  							; transmitter is empty case
-			AH = thr_empty_constant 		; store these values for enqueueEvent later 
-			AL = thr_val					; transmitter holding register value 
-			CALL transmitterEmpty
-			
-		case4: 								; data available - gets data from receiving buffer
-			AH = data_received_constant		; store these values for enqueueEvent later 
-			AL = received_data_val 			
-			CALL dataAvailable
-	
-	read the IIR again to take care of next interrupt (if more than one)
-
-;
 ;
 ;
 ; SetBaudRate 
@@ -305,7 +293,7 @@ SerialEventHandler 		ENDP
 ; 					interrupts afterwards because we don't want the serial port to 
 ; 					be outputting data while we're changing the baud rate. 
 ; 
-; Arguments:        BX - what you want the baud rate to be /////////////////////////////////////////////
+; Arguments:        BX - index of desired baud rate (according to Baud_Rate_Table)
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
@@ -323,11 +311,10 @@ SerialEventHandler 		ENDP
 SetBaudRate 	PROC 	NEAR 
 				PUBLIC 	SetBaudRate
 
-StartSetBaudRate: 
+StartSetBaudRate: 							; I used the wrong index for baud rate, forgot it was a word table 
 	CLI 					; disable interrupts 
 	PUSHA 					; save registers 
-	
-											; //////////////////////// WAIT WHAT KIND OF INTERRUPTS DO I DISABLE ////////////////////
+	PUSHF 
 	
 SetLCRDLABBit: 
  
@@ -337,26 +324,27 @@ SetLCRDLABBit:
 	
 PortChosenBaudRate: 
 	MOV 	DX, DLL_LOC 
-	MOV 	AL, DS:Baud_Rate_Table[BX]	
+	MOV 	AX, CS:Baud_Rate_Table[BX]	
 	OUT 	DX, AL 
 	
+    MOV     DX, DLM_LOC 
+    MOV     AL, AH 
+    OUT     DX, AL 
+
 ReturnToDefaultLCRValue:
 	MOV 	DX, LCR_LOC
 	MOV 	AL, LCR_VAL	 	
 	OUT 	DX, AL 
-	
+    
 EndSetBaudRate: 
-	STI 					; enable interrupts again 
+    POPF 
 	POPA 
+    STI 					; enable interrupts again 
 	RET 
 SetBaudRate		ENDP 
 
 
-	disable interrupts 
-	OUT baudRate to BAUD_RATE_ADDRESS 
-	enable interrupts 
-	
-;
+
 ; 
 ;
 ; SetParity  
@@ -367,7 +355,7 @@ SetBaudRate		ENDP
 ; 
 ; Operation:    	Outputs a set parity value to the parity address. 
 ; 
-; Arguments:        None. 
+; Arguments:        BX - index of desired parity value (according to Parity_Table)
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
@@ -388,30 +376,30 @@ SetParity 		PROC 	NEAR
 				PUBLIC 	SetParity
 				
 	StartSetParity: 
-	CLI 					; disable interrupts 
+	CLI 					; disable interrupts                                    
 	PUSHA 					; save registers 
-	
-											; //////////////////////// WAIT WHAT KIND OF INTERRUPTS DO I DISABLE ////////////////////	
+    PUSHF 
+
 PortChosenParity: 
 	MOV 	DX, LCR_LOC 
-	MOV 	AL, DS:Parity_Table[BX]				/////////////////////////////////////// why are parity table values defined as words 
-	SHL 	AL, 3 			; get the 1st bit to the 4th bit position (where the parity bits are)
-	%CLRBIT(AL,3)
-	%CLRBIT(AL,4)
-	%CLRBIT(AL,5)
+    
+    IN      AL, DX                          ; move LCR value back in 
+	AND     AL, CLEAR_PARITY_MASK           ; clears bits 3, 4, and 5 
+    
+    MOV 	CL, CS:Parity_Table[BX]			
+        
+    OR      AL, CL                          ; get the set bits of the LCR value as well as the specified parity value 
 	
-	OR 		AL, LCR_VAL_BLANK_PARITY 	
 	OUT 	DX, AL
 	
-
-	//////////////////////////// how does parity values work, not makeing sense 
 EndSetParity: 
 	STI 					; enable interrupts again 
+    POPF
 	POPA 
 	RET 
 SetParity 		ENDP 
 
-	OUT parity to PARITY_ADDRESS 	; (bits 3,4,5 of serial LCR)
+
 
 ;
 ;
@@ -421,8 +409,7 @@ SetParity 		ENDP
 ;
 ; Description:  	This function reads from the modem register 
 ;
-; Operation:    	This function reads from the modem register and stores the 
-; 					value in AX so we can use it later. 
+; Operation:    	This function reads from the modem register to clear the interrupt. 
 ; Arguments:        None. 
 ; Return Value:     None.
 ;
@@ -446,7 +433,7 @@ StartModemStatusEvent:
 	PUSHA 
 	
 ReadModemStatusRegister:
-	%CLR(AX)
+	MOV     AX, 0000H       ; CLR(AX)
 	MOV 	DX, MSR_LOC
 	IN 		AL, DX			; read the interrupt to clear it 
 	
@@ -479,10 +466,7 @@ ModemStatus		ENDP
 ; Error Handling: 	None. 
 ;
 ; Algorithms: 		None. 
-; Data Structures:  eventQueue - holds events in a queue (not initialized in this code)
-
-
-
+; Data Structures:  eventQueue - holds events in a queue 
 
 
 LineStatus 		PROC 	NEAR 
@@ -492,7 +476,7 @@ StartLineStatusEvent:
 	PUSHA 
 
 ReadLSRValue:
-	%CLR(AX)
+	MOV     AX, 0000H           ; CLR(AX)
 	MOV 	DX, LSR_LOC
 	IN 		AL, DX 
 	
@@ -502,7 +486,7 @@ GetRelevantLSRBits:
 EnqueueLSREvent:
 	MOV 	AH, LINE_STATUS_EVENT
 	
-	EnqueueEvent 
+	CALL    EnqueueEvent 
 
 EndLineStatusEvent:
 	POPA
@@ -552,7 +536,7 @@ StartTransmitterEmptyEvent:
 	PUSHA
 	
 CheckTransmitQueueNotEmpty: 
-	MOV 	SI, DS:OFFSET(transmitQueue)
+	MOV 	SI, OFFSET(transmitQueue)
 	CALL 	QueueEmpty 
 	JZ 		THREmptyAndTransmitQueueEmpty	; when empty, ZF=1
 	JNZ 	THREmptyAndTransmitQueueNotEmpty
@@ -562,7 +546,7 @@ THREmptyAndTransmitQueueEmpty:
 	JMP 	EndTransmitterEmptyHandler	; and end function 
 	
 THREmptyAndTransmitQueueNotEmpty: 
-	MOV 	SI, DS:OFFSET(transmitQueue)
+	MOV 	SI, OFFSET(transmitQueue)
 	CALL 	Dequeue 					
 										; the value dequeued will be in AL
 										
@@ -608,7 +592,7 @@ DataAvailable 		PROC 	NEAR
 
 StartDataAvailableEvent:
 	PUSHA 
-	%CLR(AX)
+	MOV     AX, 0000H           ; CLR(AX)
 	
 ReadReceiverBufferRegister: 
 	MOV 	DX, RBR_LOC
@@ -625,22 +609,6 @@ DataAvailable		ENDP
 
 
 
-	
-	
-CODE 	ENDS
-	
-	
-;
-; the data segment (SHARED VARIABLES)
-
-DATA 	SEGMENT     PUBLIC 	'DATA'
-
-
-kickstartFlag 	DB 	?
-	; this keeps track of whether or not our queue is empty (1=empty, 0=not)
-
-transmitQueue		DB 		TX_QUEUE_SIZE 		DUP 	(?)
-	; queue that holds values waiting to be output through the serial port
 
 ; Tables 
 
@@ -659,25 +627,43 @@ Baud_Rate_Table 	LABEL 	WORD
 	DW 		15 		; 38400 baud 
 	
 	
-Parity_Table 		LABEL 	WORD 
+Parity_Table 		LABEL 	BYTE
 					PUBLIC 	Parity_Table
 	
-	DW 		0000B		; none parity 
-	DW 		0100B		; odd parity 
-	DW 		0110B		; even parity 
-	DW 		0101B		; space parity 
-	DW 		0111B		; mark parity 
+	DB 		00000000B		; none parity 
+	DB 		00001000B		; odd parity 
+	DB 		00011000B		; even parity 
+	DB 		00111000B		; stick parity 
+	DB 		00101000B		; clear parity 
 	
-	/////////////////////////////////////////////////////why do these need to be words 
-
+	
 
 Event_Table 	LABEL 		WORD
 				PUBLIC 		Event_Table
 	
-	DW 		OFFSET(ModemStatus)			; 0 - modem status 
-	DW 		OFFSET(TransmitterEmpty)	; 2 - THR empty request 
-	DW 		OFFSET(DataAvailable)		; 4 - received data available
-	DW 		OFFSET(LineStatus)			; 6 - receiver line status 
+	DW 		ModemStatus			; 0 - modem status 
+	DW 		TransmitterEmpty	; 2 - THR empty request 
+	DW 		DataAvailable		; 4 - received data available
+	DW 		LineStatus   		; 6 - receiver line status 
+
+
+	
+	
+CODE 	ENDS
+	
+	
+;
+; the data segment 
+
+DATA 	SEGMENT     PUBLIC 	'DATA'
+
+    kickstart 	    DB 	    ?
+	; this keeps track of whether or not our queue is empty (1=empty, 0=not)
+
+    transmitQueue		qStruc      < >    
+	; queue that holds values waiting to be output through the serial port
+
+
 		
 		
 	

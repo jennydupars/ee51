@@ -34,7 +34,6 @@
 
 
 
-
 CGROUP  GROUP   CODE
 DGROUP  GROUP   DATA, STACK
 
@@ -44,19 +43,19 @@ CODE    SEGMENT PUBLIC 'CODE'
 
 ;external function declarations
 
-    ; These are contained in timer handler and event handler files
-    
-	EXTRN   InitTimer0:NEAR         	; initializes timer 0 ////////////////////////////////////// should i do a different timer 
+    ; These are contained in INT2 handler and event handler and chip select files
+    EXTRN   InitCS:NEAR             	; initializes chip select logic
+    EXTRN   InitINT2:NEAR         	    ; initializes INT2 interrupts
     EXTRN   ClrIRQvectors:NEAR      	; installs IllegalEventHandler for relevant 
 										; interrupts in the vector table
-    EXTRN   InstallTimer0Handler:NEAR	; installs event handler for timer 0 interrupts ///////////////////// different timer? 
+	
+    EXTRN   InstallINT2Handler:NEAR	; installs event handler for INT2 interrupts
     
 	; test code 
-	EXTRN 	SerialIOTest:NEAR 				; test code for serial channel 
-
+	EXTRN 	SerialIOTest:NEAR 				; test code for serial channel routines 
 	
-	; a serialio.asm routine 
-    EXTRN   InitSerial:NEAR				; initializes serial channel settings 
+	; a motors.asm routine 
+    EXTRN   InitSerial:NEAR				; initializes serial channel settings  
 
         
 START:  
@@ -71,14 +70,17 @@ MAIN:
     MOV     DS, AX
     
 
-    
+    CALL    InitCS                  ;initialize the 80188 chip selects
+                                    ;   assumes LCS and UCS already setup
+
     CALL    ClrIRQVectors           ; initialize interrupt vector table
 
-    CALL    InstallTimer0Handler    ;install the event handler
+    CALL    InstallINT2Handler      ;install the event handler
 
-    CALL    InitTimer0              ;initialize the internal timer
+    CALL    InitINT2                ;initialize the INT2 interrupt 
+
 	
-    CALL    InitSerial				; initialize serial channel variables 
+    CALL    InitSerial				; initialize serial channel 
 
     STI                             ;and finally allow interrupts.
   
