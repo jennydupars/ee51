@@ -32,8 +32,6 @@ CODE        SEGMENT     PUBLIC   'CODE'
 
             ASSUME      CS:CGROUP
 
-        
-
 ; QueueInit
 ;
 ; Description: 		Initialize the queue of the passed element size
