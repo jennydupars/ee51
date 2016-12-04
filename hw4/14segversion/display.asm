@@ -97,10 +97,13 @@ StartDisplay:
 
     MOV     CX, 0           		; initialize counter for the segbuffer
     
+	MOV 	DX, SI 					; save the address of first character NEW OPTIONAL
 CheckEndOfString:
     XOR     AX,AX					; clear AX
     MOV     AL, ES:[SI]            	; get value of the first character in the string 
 	INC     SI                      ; move to next character in string
+	SUB 	SI, DX 					; find lenght of string NEW OPTIONAL 
+	MOV 	stringLength, SI 		; store length of string NEW OPTIONAL 
     CMP     AL, ASCII_NULL          ; see if the string has ended (aka if the current
 										; character is euqal to ASCII_NULL)
     JE      EndOfString				; if character is null, jump to end of the string 
@@ -299,6 +302,7 @@ ClearDisplay:                       ;start clearing the display
     
 InitMuxVariables:
     MOV     currentSeg, 0			; Initialize current mux segment 
+	;MOV 	scrollPos, 0 			; Initialize current scrolling starting position optional 
     
 EndInitDisplay:                     
     POPA                            ; restore registers and
@@ -331,6 +335,8 @@ InitDisplay     ENDP
 ; Shared Variables: currentSeg - number that keeps track of which digit is
 ;									being displayed
 ;					buffer 	   - segment buffer holding segment code values 
+; 					scrollPos - optional, the position in the segment buffer that we will 
+; 								start muxing at.
 ; Global Variables: None. 
 ; Input:			None. 
 ; Output:			The next digit is output to the display.  
@@ -340,7 +346,57 @@ InitDisplay     ENDP
 ; Data Structures: 	segment buffer - array of bytes holding segment code values 
 ;
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 																							    ;
+;									THIS VERSION OF DISPLAYMUX 									;
+; 										DEFINITELY WORKS!!!!									;
+;																								;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; DisplayMux 			PROC	NEAR            
+					; PUBLIC	DisplayMux
+	
+; StartDisplayMux:					 
+    ; PUSHA                       ; save registers   
+    
+    ; MOV     BX, currentSeg		; BX will be the lookup index  
+    ; SHL     BX, 1           	; multiply by 2 since each word-sized display code 
+									; ; starts at even indices (every other one)
+    ; MOV     AX, WORD PTR segBuffer[BX]
+								; ; move display code into AX (word-sized)
+    
+    ; XCHG    AH, AL         		; move higher byte (AH) into AL to display first 
+    ; MOV     DX, HIGH_BYTE_ADDRESS ; higher byte must be ported into 0008H
+    ; OUT     DX, AL				; display higher byte code 
+    
+    ; XCHG    AH, AL          	; now we display lower byte (AL)
+								
+    ; MOV     DX, currentSeg      ; display in segBuffer at index currentSeg must be 
+									; ; displayed at currentSeg address (index in buffer
+									; ; is equal to index on LED display)
+    ; OUT     DX, AL				; display lower byte display code 
+    
+; IncrementMuxCounter:			; set number to mux next time 
+    ; MOV     BX, currentSeg		
+    ; INC     BX					; increment current segment 
+    ; MOV     AX, BX				; move current segment to AX to divide 
+    ; MOV     CX, numSegs         ; get (currentSeg + 1) mod (number of segments)
+    ; DIV     CX                  ; to account for mux counter wraparound
+    ; MOV     currentSeg, DX		
+	
+; EndDisplayMux:
+    ; POPA                        ; restore registers
+	; RET							; done multiplexing LEDs - return
+
+; DisplayMux 			ENDP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 																							    ;
+;									THIS VERSION OF DISPLAYMUX 									;
+; 										WITH SCROLLING!!!!!										;
+;																								;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 DisplayMux 			PROC	NEAR            
 					PUBLIC	DisplayMux
@@ -349,6 +405,23 @@ StartDisplayMux:
     PUSHA                       ; save registers   
     
     MOV     BX, currentSeg		; BX will be the lookup index  
+	ADD 	BX, scrollPos 							;////////////////////////////////////; NEW optional: adding scrollPos 
+	
+	; if scrollPos + currentSeg > string length:		NEW 
+	CMP 	BX, numSegsBytes							; NEW 
+	JLE 	LookUpCharacterToMux						; NEW 
+	; otherwise: 		; NEW 
+	MOV 	AH, ASCII_NULL_HIGH
+	MOV 	DX, HIGH_BYTE_ADDRESS
+	OUT 	DX, AL 
+	
+	MOV 	AL, ASCII_NULL_LOW 
+	MOV 	DX, currentSeg								; NEW 
+	OUT 	DX, AL 										; NEW 
+	JMP 	IncrementMuxCounter
+
+LookUpCharacterToMux:
+	
     SHL     BX, 1           	; multiply by 2 since each word-sized display code 
 									; starts at even indices (every other one)
     MOV     AX, WORD PTR segBuffer[BX]
@@ -369,7 +442,7 @@ IncrementMuxCounter:			; set number to mux next time
     MOV     BX, currentSeg		
     INC     BX					; increment current segment 
     MOV     AX, BX				; move current segment to AX to divide 
-    MOV     CX, numSegs         ; get (currentSeg + 1) mod (number of segments)
+    MOV     CX, numSegs         ; get (currentSeg + 1) mod (number of segments) /// this should be 8 so get the wraparound we wnat 
     DIV     CX                  ; to account for mux counter wraparound
     MOV     currentSeg, DX		
 	
@@ -378,6 +451,30 @@ EndDisplayMux:
 	RET							; done multiplexing LEDs - return
 
 DisplayMux 			ENDP
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 																							    ;
+;									NEW FUNCTION: UPDATESCROLLPOS								;
+;																								;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+UpdateScrollPos 		PROC 	NEAR
+						PUBLIC 	UpdateScrollPos
+						
+	INC 	scrollPos
+	CMP 	scrollPos, stringLength
+	JL 		EndUpdateScrollPos
+	
+	; if equal or greater: mod it!
+	MOV 	AX, scrollPos
+	MOV 	CX, stringLength
+	MOV 	DX, 0 
+	DIV 	CX 
+	MOV 	scrollPos, DX 
+	
+EndUpdateScrollPos:
+	RET 
+UpdateScrollPos 	ENDP 
 
 CODE    ENDS                                                                   
 
@@ -395,6 +492,10 @@ currentSeg		DW		?
 	; character array, stores string before conversion into 14-seg codes 
 stringBuffer 	DB  	numSegsBytes 	DUP 	(?)   
 		
+	; scrolling position index, stores the starting index of 8-character string 
+	; in the segment buffer (stores index of character in segBuffer that we're 
+	; going to have as the first character on the display) optional
+;scrollPos 		DB 		? 
 DATA	ENDS
 
 
