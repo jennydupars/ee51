@@ -38,9 +38,9 @@
 ; 					corresponding command for each key: 
 ;		+---------------+---------------+---------------+---------------+
 ;		|				|				|				|				|
-;		|  Reset robot	|	V-256		|	V+256		|	Display		|
-;		|	(stop or	| reduce speed	| increase speed|	  Mode		|
-;		|	reset all	| by about 0.4	| by about 0.4	|	 Toggle		|
+;		|  Reset robot	|	V-256		|	V+256		|	D90 		|
+;		|	(stop or	| reduce speed	| increase speed| set direction	|
+;		|	reset all	| by about 0.4	| by about 0.4	| to the right	|
 ;		|	movement)	|				|				|				|
 ;		+---------------+---------------+---------------+---------------+
 ;		|		S0		|	S65534		|	  D0		|	D180		|
@@ -55,10 +55,10 @@
 ;		|				|				|	left		|	right		|
 ;		|				|				|				|				|
 ;		+---------------+---------------+---------------+---------------+
-;		|	  T-60		|	  T60		|		D90		|	  D270		|
-;		| 	Change		|	Change		| set direction	| set direction	|
-;		|	 turret 	|	 turret		|  to exactly	|  to exactly	|
-;		| elevation to 	| elevation to	|	 right 		|	left 		|
+;		|	  T-60		|	  T60		|	D270		|	 clear 		|
+;		| 	Change		|	Change		| set direction	| error display	|
+;		|	 turret 	|	 turret		|  to exactly	|  message  	|
+;		| elevation to 	| elevation to	|	 left 		|	 		    |
 ;		|  -60 degrees	|  60 degrees	|				|				|
 ;		+---------------+---------------+---------------+---------------+
 ;
@@ -123,12 +123,12 @@ CODE    SEGMENT PUBLIC 'CODE'
 	EXTRN 	InitEventQueue:NEAR 		; initialize event queue 
 	EXTRN 	DequeueEvent:NEAR 			; dequeues an event from event queue 
     EXTRN   GetCriticalErrorFlag:NEAR	; get and set critical error flag, to see if 
-    EXTRN   SetCriticalErrorFlag:NEAR 	; event queue is full and we must reset system
+    EXTRN   ResetCriticalErrorFlag:NEAR ; event queue is full and we must reset system
     
 ; Event handler for events dequeued from event queue 
     EXTRN   QueueEventHandler:NEAR 		; redirects to error, serial character, or key 
 										; press event handlers 
-            
+   
 START:  
 
 MAIN: 
@@ -161,15 +161,15 @@ InitializeSystem:
     CALL    InitDisplay				; clear display and initialize muxing variables
 
     CALL    InitKeypad				; initialize keypad scanning variables
-    
-    MOV     AX, 0 					; set argument to clear critical error flag
-    CALL    SetCriticalErrorFlag	; after initializing
+   
+                                    ; clear critical error flag
+    CALL    ResetCriticalErrorFlag	; after initializing
 	
 InitializeEventQueue: 				; initialize event queue
 
 	CALL 	InitEventQueue			; function intializes event queue management 
 									; variables 
-
+    
     STI                             ; and finally allow interrupts.
 	
 TryToDequeueEvent: 					; attempt to dequeue event from event queue 
@@ -187,9 +187,6 @@ CheckCriticalErrorFlag:
 									; this error event is disastrous
 									; jump to re-initialize all system variables and 
 									; settings 
-	
-    MOV     AX, 0 							; this is unnecessary //////////////////////////////////////////////////
-    CALL    SetCriticalErrorFlag
 	
     JMP  	TryToDequeueEvent		; if critical error did not occur, we dequeue 
 									; next event 

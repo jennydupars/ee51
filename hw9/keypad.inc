@@ -9,13 +9,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; This file contains the assembly language definitions for the keypad
-; functions for homework 5.
+; functions.
 
 ; Input locations (read keypad input from here)
-
-IO_KEYPAD_LOC 	EQU 	0FFA8H		; IO location of the keypad 
-IO_KEYPAD_VAL 	EQU 	00183H		; value to write to keypad location for CS 
-
 
 KEYPAD_LOC		EQU 	080H 		; port number to read from (not including offset)
 

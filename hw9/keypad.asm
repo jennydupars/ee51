@@ -50,8 +50,6 @@ CODE    SEGMENT PUBLIC 'CODE'
 ;	            the supplied EnqueueEvent function with the key event in AH and the 
 ;	            key value in AL. 
 ;				
-;				This function will be called at every interrupt, or every //////////////////////////////// 
-;
 ;				Each key value will be represented by the value in 
 ; 				the row's location, that way multiple key presses in the same row 
 ;				will be able to be detected. The upper 4 bits in AL will store the row 
@@ -167,7 +165,7 @@ UpdateRow:  						; move currentRow to next row to scan a new row
 	DIV 	CX						; dividing by number of rows,
 	MOV 	currentRow, DX			; storing remainder to account for wraparound 
 
-CheckKeypadInput:
+EndCheckKeypadInput:
 	
 	RET
 
@@ -210,7 +208,8 @@ InitKeypad 		PROC	NEAR
 StartInitKeypad: 
 	
 
-	MOV 	debounceCount, PRESS_TIME 	; initialize debounceCount to amount of iterations needed to register key press 
+	MOV 	debounceCount, PRESS_TIME 	; initialize debounceCount to amount of iterations needed 
+										; to register key press 
 	MOV 	currentKey, UNPRESSED_KEY	; initialize value of current key to unpressed (0fH)
 	MOV 	currentRow, 0000H 			; initial row to start scanning will be the first one 
 				 

@@ -24,8 +24,6 @@
 ; 	HandleErrorEvent - handles an error event dequeued from eventQueue
 ; 	HandleKeyPressEvent - handles a key press event dequeued from eventQueue
 ; 	HandleSerialCharEvent - handles serial character received event 
-; 	ResetErrorFlag - resets error flag after we have handled error 
-; 	DoNOP - do no operation (placeholder function in key command table)
 
 ;
 ; Input:            Keypad input, serial input from motor unit.
@@ -48,14 +46,16 @@
 ; Revision History:
 ;    11/29/2016         Jennifer Du     initial revision
 ; 	 12/04/2016 		Jennifer Du 	writing assembly code 
-; 	 12/08/2016 		Jennifer Du 	adding "parsing" functionality to tell when motors unit is reporting errors 
+
+
 
 
 $INCLUDE(common.inc)			; commonly used constants
 $INCLUDE(remoteui.inc)			; event values and UI constants 
 $INCLUDE(macros.inc)			; commonly used macros 
 $INCLUDE(display.inc)			; constants used to control LED display
-       
+		
+        
 
 CGROUP  GROUP   CODE
 DGROUP  GROUP   DATA
@@ -64,6 +64,7 @@ CODE    SEGMENT PUBLIC 'CODE'
 
         ASSUME  CS:CGROUP, DS:DGROUP
 
+        
 ; external function declarations
     EXTRN   Display:NEAR			; used to display error and serial strings 
 	EXTRN   SerialPutString:NEAR	; used to send a string through serial channel
@@ -126,7 +127,8 @@ EndQueueEventHandler:
 QueueEventHandler 		ENDP 
 
 
-
+	
+	
 	
 ;
 ; HandleErrorEvent 
@@ -138,8 +140,15 @@ QueueEventHandler 		ENDP
 ; 					will display the error message on the display. These numbers 
 ; 					correspond to errors that have occurred during serial transmission
 ; 					routines.
-; 					Error codes can be identified using the table found in the 
-; 					Robotrike's functional specification. 
+; 					These error codes correspond to these errors: 
+;					1: LSR overrun error 
+; 					2: LSR parity error 
+; 					3: LSR overrun and parity error 
+; 					4: LSR framing error 
+; 					5: LSR framing and overrun error 
+; 					6: LSR framing and parity error 
+; 					7: LSR framing, parity, and overrun error 
+; 					8: transmit queue full error 
 ;
 ; Operation:    	The error value number passed in AL corresponds to the index in 
 ; 					the error message table. We look up the appropriate error message
@@ -164,7 +173,7 @@ QueueEventHandler 		ENDP
 
 HandleErrorEvent		PROC 	NEAR 
 
-    MOV     errorFlag, TRUE		; flag error - let system know that error has occurred
+    MOV     errorFlag, TRUE
 	
 	%CLR(AH)					; clear AH; we would like to use error value as index
 	MOV 	BX, AX 				; move error value into index 
@@ -225,27 +234,10 @@ HandleSerialCharEvent		PROC 	NEAR
 	PUSHF								; save flags
 	CLI 								; turn off interrupts
     
-CheckErrorInProgress: 	
-    CMP     errorFlag, TRUE 			; if error is occurring, it takes priority 
-										; over showing serial char 
-    JE      EndHandleSerialCharEvent	; simply end event. Note: cannot see 
-										; received data unless error flag is cleared
+    CMP     errorFlag, TRUE 
+    JE      EndHandleSerialCharEvent
     
-CheckCharacterIndicatesError: 
-	CMP 	stringInProgressLength, 0 
-	JNE 	InsertNewCharacter
-	;JE 	if the string length is 0 
-			; and we also get the character E 
-	CMP 	AL, 'E'
-	JE 		ErrorReceived
-	JNE 	InsertNewCharacter
-	
-ErrorReceived: 
-	MOV 	errorReceivedFlag, TRUE 
-	
-	
-	
-InsertNewCharacter:     
+    
 	MOV 	BX, stringInProgressLength	; move index of new character insertion into 
 										; index register 
 CheckEndOfString: 						; check to see if current character marks end 
@@ -282,16 +274,6 @@ DisplayStringInProgress: 				; display string that was being formed when
     
     MOV     stringInProgressLength, 0 	; reset index to start next serial string when
 										; new serial string is sent to the remote board
-
-CheckEndOfSerialErrorString: 
-	CMP 	errorReceivedFlag, 0 
-	JE 		EndHandleSerialCharEvent
-	; if the error received flag is set, we're done with error string
-	; so handle it here
-	
-	MOV 	errorFlag, TRUE 
-	MOV 	errorReceivedFlag, FALSE 	; since we are done doing this string 
-	
 	;JMP 	EndHandleSerialCharEvent
 
 EndHandleSerialCharEvent: 
@@ -365,6 +347,7 @@ DisplayDisplayString:
 SendCommandString:
 	
 	POP 	BX 				; restore index value saved before Display was called
+    ;PUSH    BX
 	MOV 	SI, CS:KEY_COMMAND_TABLE[BX].COMMANDSTRING
 							; retrieve command string from selected key command entry
 	PUSH 	CS				; push CS and pop ES because SerialPutString expects a 
@@ -373,38 +356,11 @@ SendCommandString:
 	CALL 	SerialPutString	; then call SerialPutString to put each character into 
 							; transmit queue to send through serial channel 
 	
-DoAction: 					; do action linked with that key 
+DoAction: 
+    ;POP     BX 
     CALL    CS:KEY_COMMAND_TABLE[BX].ACTION
-	
 	RET 			
 HandleKeyPressEvent			ENDP
-
-
-
-;
-;
-; DoNOP  
-;
-;
-; Description:  	This function does nothing, and returns. 
-;
-; Operation:    	We do no operation, then return.
-;
-; Arguments:        None.
-; Return Value:     None.
-;
-; Local Variables:  None. 
-; Shared Variables: None.
-; Global Variables:	None.
-; 
-; Input:            None.
-; Output:           None.
-;
-; Algorithms: 		None. 
-; Data Structures:  None.
-; Error Handling: 	None.
-; Registers Used: 	None.
-;
 
 DoNOP   PROC    NEAR 
         
@@ -412,40 +368,10 @@ DoNOP   PROC    NEAR
     RET
 DoNOP       ENDP
 
-;
-;
-; ResetErrorFlag
-;
-;
-; Description:  	This function resets the error flag so that the system understands
-; 					that we are done handling errors.
-;
-; Operation:    	We reset the errorFlag variable, then return.
-;
-; Arguments:        None.
-; Return Value:     None.
-;
-; Local Variables:  None. 
-; Shared Variables: errorFlag (w) - lets system know if we are currently dealing with 
-; 						error or not 
-; Global Variables:	None.
-; 
-; Input:            None.
-; Output:           None.
-;
-; Algorithms: 		None. 
-; Data Structures:  None.
-; Error Handling: 	None.
-; Registers Used: 	None.
-;
 ResetErrorFlag  PROC    NEAR
-
     MOV     errorFlag, FALSE 
-
     RET 
 ResetErrorFlag  ENDP
-
-
 ;
 ;
 ; Key Command Table Entry 
@@ -455,9 +381,9 @@ ResetErrorFlag  ENDP
 ; 				to simplify the table used to look up key commands and actions. 
 ;
 KEY_COMMAND_ENTRY 	STRUC 
-	DISPLAYSTRING 	DW      ?				; string to be displayed when key is pressed
-	COMMANDSTRING 	DW	    ?				; string to be sent as command when key is pressed
-    ACTION          DW      ?				; action that is executed when key is pressed 
+	DISPLAYSTRING 	DW      ?
+	COMMANDSTRING 	DW	    ?
+    ACTION          DW      ?
 KEY_COMMAND_ENTRY 	ENDS 
 
 KEY_COMMAND_ENTRY_SIZE 	EQU 	6 		; 2 words are 4 bytes, display and command
@@ -478,19 +404,19 @@ KEY_COMMAND_TABLE 	LABEL 	KEY_COMMAND_ENTRY
 																		; Key value 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 00
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 01 
-	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string),DoNOP>			; 02 
+	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string),DoNOP>		; 02 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 03
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP >		; 04 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP >		; 05 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 06 
-	KEY_COMMAND_ENTRY<OFFSET(Direction_90), OFFSET(Direction_90), DoNOP>			; 07
+	KEY_COMMAND_ENTRY<OFFSET(No_display_string), OFFSET(No_command_string), DoNOP>	; 07
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 08
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 09
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 0a
-	KEY_COMMAND_ENTRY<OFFSET(Increment_speed), 	OFFSET(Increment_speed), DoNOP>		; 0b
+	KEY_COMMAND_ENTRY<OFFSET(Increment_speed), 	OFFSET(Increment_speed), DoNOP>	; 0b
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 0c
-	KEY_COMMAND_ENTRY<OFFSET(Decrement_speed), 	OFFSET(Decrement_speed), DoNOP>		; 0d
-	KEY_COMMAND_ENTRY<OFFSET(Stop_robot_disp), 	OFFSET(Stop_robot_comm), DoNOP>		; 0e
+	KEY_COMMAND_ENTRY<OFFSET(Decrement_speed), 	OFFSET(Decrement_speed), DoNOP>	; 0d
+	KEY_COMMAND_ENTRY<OFFSET(Stop_robot_disp), 	OFFSET(Stop_robot_comm), DoNOP>	; 0e
 	KEY_COMMAND_ENTRY<OFFSET(No_display_string), OFFSET(No_command_string), DoNOP>	; 0f
 	
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 10
@@ -534,11 +460,11 @@ KEY_COMMAND_TABLE 	LABEL 	KEY_COMMAND_ENTRY
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), 	OFFSET(No_command_string), DoNOP>		; 34 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 35 
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 36
-	KEY_COMMAND_ENTRY<OFFSET(Error_Clear), OFFSET(No_command_string), ResetErrorFlag>; 37
+	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), ResetErrorFlag>		; 37
 	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 38 
 	KEY_COMMAND_ENTRY<OFFSET(Turret_pos_30), OFFSET(Turret_pos_30), DoNOP>			; 39 
 	KEY_COMMAND_ENTRY<OFFSET(Turret_neg_30), OFFSET(Turret_neg_30), DoNOP>			; 3a
-	KEY_COMMAND_ENTRY<OFFSET(Direction_270), OFFSET(Direction_270), DoNOP>			; 3b 
+	KEY_COMMAND_ENTRY<OFFSET(Invalid_key), OFFSET(No_command_string), DoNOP>		; 3b 
 	KEY_COMMAND_ENTRY<OFFSET(Turret_0), OFFSET(Turret_0), DoNOP>					; 3c 
 	KEY_COMMAND_ENTRY<OFFSET(Turret_pos_60), OFFSET(Turret_pos_60), DoNOP>			; 3d
 	KEY_COMMAND_ENTRY<OFFSET(Turret_neg_60), OFFSET(Turret_neg_60), DoNOP>			; 3e
@@ -548,12 +474,12 @@ KEY_COMMAND_TABLE 	LABEL 	KEY_COMMAND_ENTRY
 ;
 ; These labels store the strings referred to in the key command table.
 ;
-Error_Clear     LABEL   BYTE 
-    DB  'Error flag cleared',ASCII_NULL 
+
 Invalid_key   LABEL   BYTE
     DB      'E:Invalid key',ASCII_NULL
 No_command_string   LABEL   BYTE 
     DB      '         ',ASCII_NULL
+
 Direction_0     LABEL   BYTE
     DB  'D0',ASCII_CAR_RET,ASCII_NULL
 Direction_90     LABEL   BYTE
@@ -636,7 +562,11 @@ ERROR_STRING_TABLE 		LABEL 		WORD
 	DW OFFSET(ERROR13)
     DW OFFSET(ERROR14)
 	DW OFFSET(ERROR15)
-
+	DW OFFSET(ERROR16)
+	;DW OFFSET(ERROR17)
+    ;DW OFFSET(ERROR18)
+	;DW OFFSET(ERROR19)
+	
 
 ;
 ;
@@ -675,10 +605,11 @@ ERROR14 	LABEL 	BYTE
 	DB 	'Error: BFP',ASCII_NULL
 ERROR15 	LABEL 	BYTE 
 	DB 	'Error: BBFPO',ASCII_NULL
-
+ERROR16 	LABEL 	BYTE 
+	DB 	'Error: 16',ASCII_NULL
     
     
-
+    
 ; 
 ; 
 ; Event Type Table 
@@ -702,9 +633,6 @@ CODE    ENDS
 
 
 DATA        SEGMENT     PUBLIC      'DATA'
-
-errorReceivedFlag 		DB 	?
-	; tells us if error string from motors unit is currently being transmitted 
 
 stringInProgress        DB  MAX_DISPLAY_STR_SIZE    DUP     (?)
 	; stringInProgress stores and concatenates serial string characters as they are 

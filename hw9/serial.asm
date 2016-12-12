@@ -3,34 +3,36 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                                                                            ;
 ;  			     	     Robotrike Serial I/O Routines                       ;
-;                           	   Homework 7        		                 ;
 ;                                   EE/CS 51                                 ;
 ;                                                                            ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; This file contains routines for serial initialization and serial I/O 
 ; while the Robotrike system is running. The functions included are:
+; Public functions: 
 ; 	SerialPutChar(c) - output the character c to the serial channel
 ; 	SerialPutString - puts string in serial channel for transmission
 ; 	InitSerial - initializes serial port
 ; 	SetBaudRate - sets baud rate to different values 
 ; 	SetParity - sets parity to different types 
 ; 	SerialEventHandler - handles serial actions at interrupts 
+; Local functions: 
 ; 	ModemStatus	- read from modem register 
 ; 	LineStatus - enqueue line status error in event queue 
 ; 	TransmitterEmpty - output next value from transmit queue through serial port 
-; 	DataAvailable - receive data 
+; 	DataAvailable - receive data and enqueue data events to eventQueue 
 
 ; Revision History:
 ;    11/18/2016         Jennifer Du     initial revision
-; 	 11/20/2016			Jennifer Du		commenting 
+; 	 11/20/2016			Jennifer Du		commenting
+;    12/04/2016         Jennifer Du     fixed critical code, other large code changes 
+;                                       to SetBaudRate and added SerialPutString         
 
 ; include files 
-$INCLUDE(serial.inc)
-$INCLUDE(common.inc)
-$INCLUDE(queue.inc)
-$INCLUDE(display.inc)
-;$INCLUDE(macros.inc)                                ;///////////////////////////////////////// how do i make macros work ///////////////////////////////////////////////
+$INCLUDE(serial.inc)            ; constants used for serial channel
+$INCLUDE(common.inc)            ; commonly used constants
+$INCLUDE(queue.inc)             ; queue constants 
+$INCLUDE(display.inc)           ; constants used for ASCII strings and display
 
 
 	
@@ -45,13 +47,13 @@ CODE SEGMENT PUBLIC 'CODE'
     
     ; External functions
 
-	EXTRN 	EnqueueEvent:NEAR
+	EXTRN 	EnqueueEvent:NEAR           ; enqueues events to event queue 
     
-    EXTRN   Dequeue:NEAR
-    EXTRN   Enqueue:NEAR
-    EXTRN   QueueFull:NEAR
-    EXTRN   QueueInit:NEAR
-    EXTRN   QueueEmpty:NEAR
+    EXTRN   Dequeue:NEAR                ; dequeues items from queue
+    EXTRN   Enqueue:NEAR                ; enqueues items to queue
+    EXTRN   QueueFull:NEAR              ; determines if a queue is full
+    EXTRN   QueueInit:NEAR              ; initializes queues
+    EXTRN   QueueEmpty:NEAR             ; determines if a queue is empty
 
 ;
 ;
@@ -61,8 +63,8 @@ CODE SEGMENT PUBLIC 'CODE'
 ;
 ; Description:  	This function initializes the serial port and other variables
 ; 					and data structures needed to output data through the serial 
-; 					port, as well as take in information. The default baud rate is 
-; 					9600 baud and the default parity is even parity. 
+; 					port, as well as take in information. The default baud rate and
+;                   parity are set by this function.
 ; 
 ; Operation:    	We initialize a channel queue (where the values sit before being 
 ; 					output through the serial port) and a kickstartFlag (which tells us 
@@ -71,58 +73,64 @@ CODE SEGMENT PUBLIC 'CODE'
 ; 					call SetBaudRate and SetParity to initialize the parity and baud 
 ; 					rate settings for the serial port. 
 ; 
-; Arguments:        None. 
+; Arguments:        None.
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
-; Shared Variables: kickstartFlag - keeps track of whether or not the channel queue is empty 
-; 					transmitQueue - holds values to be output to the Transmit Holding Register 
+; Shared Variables: kickstartFlag (w) - keeps track of whether or not the channel 
+;                       queue is empty 
+; 					transmitQueue (w) - holds values to be output to the Transmit 
+;                       Holding Register 
 ; Global Variables:	None.
 ; 
 ; Input:            None.
-; Output:           None.
+; Output:           Output to serial chip.
 ;
 ; Error Handling: 	None. 
 ;
 ; Algorithms: 		None. 
 ; Data Structures:  transmitQueue - holds values to be output to the Transmit Holding Register 
+;
 
 
 InitSerial 		PROC 	NEAR 
 				PUBLIC 	InitSerial 
 	
 StartInitSerial: 
-	PUSHA							; save registers 
+	PUSHA							    ; save registers 
 	
 InitializeTransmitQueue: 	
-	MOV 	SI, OFFSET(transmitQueue)		; get address of transmit queue 
-	MOV 	BL, SELECT_BYTE_SIZE	 			; move in 2nd argument QueueInit will take (size of each element)
+	MOV 	SI, OFFSET(transmitQueue)	; get address of transmit queue 
+	MOV 	BL, SELECT_BYTE_SIZE	 	; move in 2nd argument QueueInit will take 
+                                        ; (size of each element)
 	
-	CALL 	QueueInit
+	CALL 	QueueInit                   ; then initialize Queue
 
 InitializeKickstartFlag: 	
-	MOV 	kickstart, IS_SET 			; set kickstart flag since transmit queue is empty 
+	MOV 	kickstart, TRUE 			; set kickstart flag since transmit queue 
+                                        ; is empty 
 	
 SetInitialBaudRate: 
-	MOV 	BX, DEFAULT_BAUD_INDEX		; set index of the default baud rate (in the baud rate table)
-	CALL 	SetBaudRate 
+	MOV 	BX, DEFAULT_BAUD_INDEX		; set index of the default baud rate (in 
+	CALL 	SetBaudRate                 ; the baud rate table)
 
 SetInitialParity: 
-	MOV 	BX, DEFAULT_PARITY_INDEX
-	CALL 	SetParity 
+	MOV 	BX, DEFAULT_PARITY_INDEX    ; set index of default parity value (in the 
+	CALL 	SetParity                   ; parity table), and set parity 
 	
 InitializeLCR: 
 	MOV 	DX, LCR_LOC
-	MOV 	AL, LCR_VAL	 	; DLAB not set so we can access receiving buffer and transmitter holding buffer 
-	OUT 	DX, AL 
+	MOV 	AL, LCR_VAL	 	            ; DLAB not set so we can access receiving buffer 
+	OUT 	DX, AL                      ; and transmitter holding buffer 
 	
 InitializeIER: 	
-	MOV 	DX, IER_LOC
-	MOV 	AL, IER_VAL 
-	OUT 	DX, AL 					; write port value to enable interrupts 
+	MOV 	DX, IER_LOC					; write this value to interrupt enable 
+	MOV 	AL, IER_VAL 				; register (IER) to enable transmiterr empty
+										; interrupt, line status error interrupt, 
+	OUT 	DX, AL 					    ; and data available interrupt
 			
 EndInitSerial: 
-	POPA 						; restore registers 
+	POPA 						        ; restore registers 
 	RET 
 InitSerial 		ENDP 
 
@@ -144,14 +152,20 @@ InitSerial 		ENDP
 
 ; Operation:    	First, we check if the queue is full. If it is, we can't put anymore 
 ; 					things into it, so we just leave the function after setting the
-; 					carry flag. If the queue is not full,
-; 					then we enqueue the character. We also reset the kickstartFlag, which 
-; 					keeps track if the queue is empty or not. 
+; 					carry flag. If the queue is not full, then we enqueue the character. 
+;                   We also reset the kickstartFlag and perform the kickstart, if the
+;                   kickstart flag is set. The kickstart flag keeps track if the 
+;                   queue is empty or not. 
+; 
 ; Arguments:        c (AL) - the character to be added to the queue 
-; Return Value:     None.
+; Return Value:     CF - carry flag is set if the queue is full, not set if we are 
+;                       able to enqueue to the queue.
 ;
 ; Local Variables:  None. 
-; Shared Variables: kickstartFlag - keeps track of whether the channel queue is empty or not 
+; Shared Variables: kickstartFlag (r/w) - keeps track of whether the channel queue 
+;                       is empty or not 
+;                   transmitQueue (r) - holds values ready to be sent over serial 
+; 						channel 
 ; Global Variables:	None.
 ; 
 ; Input:            None.
@@ -160,52 +174,61 @@ InitSerial 		ENDP
 ; Error Handling: 	None. 
 ;
 ; Algorithms: 		None. 
-; Data Structures:  transmitQueue (not accessed in this function, but functions called in 
-; 					this function change it)
+; Data Structures:  transmitQueue.
+
 SerialPutChar	PROC 	NEAR 
 				PUBLIC 	SerialPutChar 
 
 StartSerialPutChar: 
-	PUSHA							; save registers 
-	MOV     CL, AL                       ; save AX's value (arg value) 
+	PUSHA							        ; save registers 
+	MOV     CL, AL                          ; save AX's value (arg value) 
     
 CheckTransmitQueueFull: 
-	MOV 	SI, OFFSET(transmitQueue)
+	MOV 	SI, OFFSET(transmitQueue)       ; see if the transmit queue is full
 	CALL 	QueueFull			
 	
-	JZ 		TransmitQueueIsFull
-	;JNZ 	TransmitQueueNotFull
+	JZ 		TransmitQueueIsFull             
+	;JNZ 	TransmitQueueNotFull            ; if not full, then we can enqueue to it
 	
 TransmitQueueNotFull: 
-EnqueueCharToTransmitQueue: 	; whether or not we need to kickstart, we enqueue char to transmit queue! 
+EnqueueCharToTransmitQueue: 	            ; whether or not we need to kickstart, we
+                                            ; enqueue char to transmit queue! 
 	MOV 	SI, OFFSET(transmitQueue)		
-												; AL should already have char value to be enqueued 
+											; AL should already have char value to be 
+                                            ; enqueued 
                                                 
-    MOV     AL, CL                  ; restore AL with the value of argument  
+    MOV     AL, CL                          ; restore AL with the value of argument  
     
-	CALL 	Enqueue 		
+	CALL 	Enqueue 		                ; both arguments populated, enqueue!
 
-	CMP 	kickstart, IS_SET 		; see if kickstart flag is set 
-	JE 		KickstartSerialChannel
-	JNE 	SuccessfullyEnqueued;EndSerialPutChar;EnqueueCharToTransmitQueue
+	CMP 	kickstart, IS_SET 		        ; see if kickstart flag is set 
+	JE 		KickstartSerialChannel          ; if set, we need to kickstart serial 
+                                            ; channel after enqueueing
+	JNE 	SuccessfullyEnqueued            ; if kickstart was not set, we skip and
+                                            ; go to successfully enqueued
 
-KickstartSerialChannel: 
-	MOV 	kickstart, NOT_SET 	; reset kickstart flag 
+KickstartSerialChannel:                     ; if the kickstart flag was set, earlier
+	MOV 	kickstart, NOT_SET 	            ; reset kickstart flag 
 	
 	
-	MOV 	DX, IER_LOC			; disable transmitter empty interrupt, then enable it again
-	MOV 	AL, IER_VAL_NO_THR_INT 	
-	OUT 	DX, AL
+	MOV 	DX, IER_LOC			            ; disable transmitter empty interrupt,
+    IN      AL, DX 							; first read in IER value 
+    MOV     CL, AL 							; store original value, so we can restore later 
+    AND     AL, IER_NO_THR_INT_MASK			; use mask to clear THR bit
+    OUT     DX, AL 							; then write updated IER value to location 
 	
-	MOV 	AL, IER_VAL
-	OUT 	DX, AL 	
+											; then enable it again:
+	MOV 	AL, CL                     		; move original IER value into AL 
+	OUT 	DX, AL 							; to restore IER value (same as beginning of func)
 	JMP 	SuccessfullyEnqueued
-TransmitQueueIsFull: 
+    
+TransmitQueueIsFull:            ; if transmit queue is full: set carry flag and return
 	STC 						; set carry flag since no character was output to transmitQueue
 	JMP 	EndSerialPutChar	; end function 
+
 SuccessfullyEnqueued: 
-	CLC 
-	;JMP 	EndSerialPutChar
+	CLC                         ; clear carry flag if we've successfully enqueued 
+	;JMP 	EndSerialPutChar    ; value
 EndSerialPutChar: 
 	POPA 						; restore registers 
 	RET 
@@ -235,57 +258,49 @@ SerialPutChar	ENDP
 ; Input:            None.
 ; Output:           String is passed through serial channel. 
 ;
-; Error Handling: 
-; Registers Used: 
+; Error Handling:   If the transmit queue is full, we can't enqueue anymore to it.
+;                   So, we enqueue an error event to the event queue to handle 
+;                   later. 
+; Registers Used:   AX.
 ; Algorithms: 		None. 
 ; Data Structures:  None.
 
+
 SerialPutString		PROC 	NEAR 
 					PUBLIC 	SerialPutString
-
-; GetCharacter: 
-	; MOV 	AL, CS:[SI]						; SI in code, data, etc?
-	; PUSH 	SI 
-	; CALL 	SerialPutChar 
-	; JC 		HandleTransmitQueueFullError 
-	; ;JNC 	CheckNullTermination
-; CheckNullTermination: 
-	; CMP 	AL, 0;ASCII_NULL 
-	; JE 		EndSerialPutString
-	; ;JNE 	GetNextCharacterToPutSerialChar:
-; GetNextCharacterToPutSerialChar: 
-	; POP 	SI
-	; INC 	SI 
-	; JMP 	GetCharacter
-	
-; HandleTransmitQueueFullError: 
-	; MOV 	AL, 07;TRANSMIT_QUEUE_FULL_ERROR 		; or whatever value corresponds to a transmit queue full error 
-    ; MOV     AH, 0                       ; ERROR_VAL s
-	; CALL 	EnqueueEvent 
-	; JMP 	EndSerialPutString 
 	
 GetCharacter: 
-	MOV 	AL, ES:[SI]						; SI in code, data, etc?
+	MOV 	AL, ES:[SI]						; get character ASCII code 
 	
 CheckNullTermination: 
-	CMP 	AL, ASCII_NULL ;////////// magic 
-	JZ 		EndSerialPutString	
+	CMP 	AL, ASCII_NULL                  ; check to see if current character 
+                                            ; is the end of a string
+	JZ 		EndSerialPutString	            ; if so, immediately put string in 
+                                            ; through serial channel.
 	
-	PUSH 	SI 
-	CALL 	SerialPutChar 
-	JC 		HandleTransmitQueueFullError 
-	;JNC 	
+	PUSH 	SI                              ; save SI since SerialPutChar might 
+                                            ; change it 
+	CALL 	SerialPutChar                   ; Put character in AL in through 
+                                            ; SerialPutChar
+	JC 		HandleTransmitQueueFullError    ; SerialPutChar can raise this issue, 
+                                            ; if transmit queue is all full. 
+                                            ; in this case, handle the issue by 
+                                            ; enqueueing error value and type
+	;JNC 	GetNextCharacterToPutSerialChar ; if no carry flag was set, then we 
+                                            ; successfully enqueued a character to
+                                            ; transmit queue.
 
-GetNextCharacterToPutSerialChar: 
-	POP 	SI
-	INC 	SI 
-	JMP 	GetCharacter
+GetNextCharacterToPutSerialChar:            ; continue:
+	POP 	SI                              ; increment pointer to next character
+	INC 	SI                              ; in the string 
+	JMP 	GetCharacter                    ; then loop and get this new character
 	
-HandleTransmitQueueFullError: 
-	MOV 	AL, 08;TRANSMIT_QUEUE_FULL_ERROR 		; or whatever value corresponds to a transmit queue full error 
-    MOV     AH, 0                       ; ERROR_VAL s
-	CALL 	EnqueueEvent 
-	JMP 	EndSerialPutString 
+HandleTransmitQueueFullError:               ; if transmit queue was full when 
+                                            ; SerialPutChar was called:
+	MOV 	AL, TRANSMIT_QUEUE_FULL_ERROR   ; enqueue Transmit queue full error
+    MOV     AH, ERROR_VAL                   ; use unique transmit queue full identifier
+	CALL 	EnqueueEvent 					; and enqueue error event 
+	JMP 	EndSerialPutString              ; end function
 
 EndSerialPutString:
 	RET 
@@ -298,14 +313,18 @@ SerialPutString		ENDP
 ; Description:  	This function handles serial actions at interrupts. The 
 ; 					possible interrupts we will need to manage are the line 
 ; 					status interrupt, the data available interrupt, the modem 
-; 					status interrupt, and the transmitter empty interrupt. 
+; 					status interrupt, and the transmitter empty interrupt. This 
+;                   function operates on edge trigerring interrupts.
 ; 
 ; Operation:    	We read the interrupt identification register, and see what 
 ; 					it says. We can either have a line status interrupt, a data 
 ; 					available interrupt, a transmitter empty interrupt, or a 
 ; 					modem status interrupt. Based on the value of the IIR, we 
 ; 					will know which function to call to handle that specific 
-; 					interrupt. 
+; 					interrupt. We then loop back and read the value of the IIR 
+;                   if there was an error that we handled. We do this and do not 
+;                   exit the serial event handler until we have read the IIR 
+;                   value and it indicates that there are no interrupts pending.
 ; 
 ; Arguments:        None. 
 ; Return Value:     None.
@@ -330,28 +349,39 @@ SerialEventHandler 		PROC 	NEAR
 StartSerialEventHandler: 
 	PUSHA 						; save registers 
 						
-ReadIIRValue: 								; i was jumping to the wrong place for a long time, did not recheck what IIR was after every iteration 
-	MOV 	DX, IIR_LOC 	
-	MOV     AX, 0000H           ; CLR(AX)					; use macro defined in macros.inc to clear a register 
-	IN 		AL, DX 
-	AND		AL, IIR_EVENT_MASK 				; get just the lowest 3 bits 
+ReadIIRValue: 								
+	MOV 	DX, IIR_LOC 	        ; store location of interrupt identification reg
+	XOR     AX, AX                  ; clear AX to get just the address			
+	IN 		AL, DX                  ; in AL after reading it from IIR
+	AND		AL, IIR_EVENT_MASK 		; AND IIR value with event mask to get the 
+                                    ; relevant event bits
 	
-InterruptsPending: 
+IIRInterruptsPending: 
 	
-	;TESTBIT(AL, 0)				; test lowest bit (interrupt pending bit)	 
-    TEST 	AL, 00000001B
-	JNZ 	EndSerialEventHandler	; if 1, then exit 
-	JZ	 	GetInterruptEvent		; if bit is 0, then interrupts are pending. 
+    TEST 	AL, IIR_INTPT_PEND_MASK ; test lowest bit to see if interrupts are pending
+									; if lowest bit is 1, no interrupts are pending: 
+	JNZ 	EndSerialEventHandler	; exit -- no interrupts to take care of 
+	;JZ	 	GetInterruptEvent		; if lowest bit is 0, then interrupts are pending: 
+									; identify/process specific interrupt event 
 	
 GetInterruptEvent: 
 	
-    ;SHR 	AX, 1 				; get rid of lowest bit to isolate value of interrupt 
 	MOV 	BX, AX 				; move value of interrupt into index register 
-	CALL 	CS:Event_Table[BX]	; call one of the functions 
+	CALL 	CS:Event_Table[BX]	; call one of the functions corresponding to
+								; specific interrupt -- functions have been ordered 
+								; the way the IIR stores values of interrupts. 
+								; An IIR value of: 
+								; 0 - modem status (all bits reset)
+								; 2 - THR empty request (1st bit set)
+								; 4 - received data available (2nd bit set)
+								; 6 - receiver line status (1st and 2nd bit set)
+								; We have created the CALL event table so that IIR 
+								; value corresponds to index in table (word-sized 
+								; elements)
 	
-    JMP     ReadIIRValue 
-	
-	
+    JMP     ReadIIRValue        ; read IIR value again to make sure there are no
+                                ; more errors, or handle errors if they came up 
+                                ; during this
 	
 EndSerialEventHandler:
 	POPA						; restore registers 
@@ -374,6 +404,8 @@ SerialEventHandler 		ENDP
 ; 					be outputting data while we're changing the baud rate. 
 ; 
 ; Arguments:        BX - index of desired baud rate (according to Baud_Rate_Table)
+; 						can range from 0 to 18, and even index corresponds to a new 
+; 						divisor in the table. 
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
@@ -388,81 +420,38 @@ SerialEventHandler 		ENDP
 ; Algorithms: 		None. 
 ; Data Structures:  None.
 ;
-; SetBaudRate 	PROC 	NEAR 
-				; PUBLIC 	SetBaudRate
 
-; StartSetBaudRate: 							; I used the wrong index for baud rate, forgot it was a word table 
-	; CLI 					; disable interrupts 
-	; PUSHA 					; save registers 
-	; PUSHF 
-	
-; SetLCRDLABBit: 
- 
-	; MOV 	DX, LCR_LOC
-	; MOV 	AL, LCR_VAL_DLAB	 	; set DLAB so that we can set baud rate 
-	; OUT 	DX, AL 
-	
-; PortChosenBaudRate: 
-	; MOV 	DX, DLL_LOC 
-	; MOV 	AX, CS:Baud_Rate_Table[BX]	
-	; OUT 	DX, AL 
-	
-    ; MOV     DX, DLM_LOC 
-    ; MOV     AL, AH 
-    ; OUT     DX, AL 
-
-; ReturnToDefaultLCRValue:
-	; MOV 	DX, LCR_LOC
-	; MOV 	AL, LCR_VAL	 	
-	; OUT 	DX, AL 
-    
-; EndSetBaudRate: 
-    ; POPF 
-	; POPA 
-    ; STI 					; enable interrupts again 
-	; RET 
-; SetBaudRate		ENDP 
 SetBaudRate 	PROC 	NEAR 
 				PUBLIC 	SetBaudRate
 
-StartSetBaudRate: 							; I used the wrong index for baud rate, forgot it was a word table 
-	;CLI
+StartSetBaudRate: 							
 	PUSHA 					; save registers 
 	PUSHF 
 	CLI 					; disable interrupts 
 SetLCRDLABBit: 
- 
-	; MOV 	DX, LCR_LOC
-	; MOV 	AL, LCR_VAL_DLAB	 	; set DLAB so that we can set baud rate 
-	; OUT 	DX, AL 
 	
 	MOV 	DX, LCR_LOC 
 	IN 		AL, DX 
 	MOV 	CL, AL 					; save original LCR value 
-	OR 		AL, LCR_SET_DLAB_MASK
-	
-	OUT 	DX, AL 
+	OR 		AL, LCR_SET_DLAB_MASK   ; set dlab bit 
+        
+	OUT 	DX, AL                  ; write new LCR value to LCR location 
 	
 PortChosenBaudRate: 
-	MOV 	DX, DLL_LOC 
-	MOV 	AX, CS:Baud_Rate_Table[BX]	
-	; OUT 	DX, AL 
-	
-    ; MOV     DX, DLM_LOC 
-    ; MOV     AL, AH 
-    ; OUT     DX, AL 
-	
-	OUT 	DX, AX
+	MOV 	DX, DLL_LOC             ; now that dlab bit is set, we can modify
+	MOV 	AX, CS:Baud_Rate_Table[BX]		; the baud rate with table lookup
+	OUT 	DX, AX                  ; of the divisors that correspond to each 
+                                    ; baud rate
 
 ReturnToOriginalLCRValue:
-	MOV 	DX, LCR_LOC
+	MOV 	DX, LCR_LOC             
 	MOV 	AL, CL 					; restore original LCR value stored in CL 
-	OUT 	DX, AL 
+	OUT 	DX, AL                  
     
 EndSetBaudRate: 
-    POPF 
-	POPA 
-    ;STI 					; enable interrupts again 
+    POPF                            ;restore flags
+	POPA                            ;restore registers
+
 	RET 
 SetBaudRate		ENDP 
 
@@ -473,10 +462,15 @@ SetBaudRate		ENDP
 ; SetParity  
 ; 
 ;
-; Description:  	This function sets the parity to a TBD value, and outputs
-; 					it to the parity address where it will be 'set'.
+; Description:  	This function sets the parity to a value found in the parity 
+; 					table, specified by the index argument BX. This function 
+; 					outputs the partiy to the parity address where it will be 'set'.
 ; 
-; Operation:    	Outputs a set parity value to the parity address. 
+; Operation:    	Outputs a set parity value to the parity address. Using the 
+; 					passed in argument BX, this function uses the parity value at
+; 					the index BX in the Parity_Table to set the parity value. It 
+; 					ORs the specified parity value with the current value of the 
+; 					line control register. 
 ; 
 ; Arguments:        BX - index of desired parity value (according to Parity_Table)
 ; Return Value:     None.
@@ -498,10 +492,10 @@ SetBaudRate		ENDP
 SetParity 		PROC 	NEAR 
 				PUBLIC 	SetParity
 				
-	StartSetParity: 
-	CLI 					; disable interrupts                                    
+StartSetParity: 
+	PUSHF 
+    CLI 					; disable interrupts                                    
 	PUSHA 					; save registers 
-    PUSHF 
 
 PortChosenParity: 
 	MOV 	DX, LCR_LOC 
@@ -509,14 +503,15 @@ PortChosenParity:
     IN      AL, DX                          ; move LCR value back in 
 	AND     AL, CLEAR_PARITY_MASK           ; clears bits 3, 4, and 5 
     
-    MOV 	CL, CS:Parity_Table[BX]			
+    MOV 	CL, CS:Parity_Table[BX]			; look up parity in table using passed 
+                                            ; in argument BX 
         
-    OR      AL, CL                          ; get the set bits of the LCR value as well as the specified parity value 
+    OR      AL, CL                          ; get the set bits of the LCR value 
+                                            ; as well as the specified parity value 
 	
 	OUT 	DX, AL
 	
 EndSetParity: 
-	STI 					; enable interrupts again 
     POPF
 	POPA 
 	RET 
@@ -537,7 +532,7 @@ SetParity 		ENDP
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
-; Shared Variables: eventQueue - queue that stores all events that occur  
+; Shared Variables: None.
 ; Global Variables:	None.
 ; 
 ; Input:            None.
@@ -546,17 +541,16 @@ SetParity 		ENDP
 ; Error Handling: 	None. 
 ;
 ; Algorithms: 		None. 
-; Data Structures:  eventQueue - queue that stores all events that occur 
+; Data Structures:  None.
 
 	
 ModemStatus 	PROC 	NEAR 
-				PUBLIC 	ModemStatus
 
 StartModemStatusEvent: 
 	PUSHA 
 	
 ReadModemStatusRegister:
-	MOV     AX, 0000H       ; CLR(AX)
+
 	MOV 	DX, MSR_LOC
 	IN 		AL, DX			; read the interrupt to clear it 
 	
@@ -581,7 +575,7 @@ ModemStatus		ENDP
 ;
 ; Local Variables:  None. 
 ; Shared Variables: None.
-; Global Variables:	eventQueue - queue that stores all events that occur  
+; Global Variables:	None.
 ; 
 ; Input:            None.
 ; Output:           None.
@@ -589,56 +583,40 @@ ModemStatus		ENDP
 ; Error Handling: 	None. 
 ;
 ; Algorithms: 		None. 
-; Data Structures:  eventQueue - holds events in a queue 
+; Data Structures:  None.
 
 
 LineStatus 		PROC 	NEAR 
-				PUBLIC 	LineStatus
 
 StartLineStatusEvent: 
-	PUSHA 
+	PUSHA 							; store registers 
 
 ReadLSRValue:
-	MOV     AX, 0000H           ; CLR(AX)
+	XOR     AX, AX					; clear register 
 	MOV 	DX, LSR_LOC
-	IN 		AL, DX 
-	;MOV 	BX, 0 
+	IN 		AL, DX 					; read value of line status reg 
 	
 GetRelevantLSRBits: 	
-	AND 	AL, LSR_ERROR_MASK	
-	CMP 	AL, 0 
-	JZ 		EndLineStatusEvent
-	; MOV 	CL, AL
-	; CMP 	CL, 0 
-	; JZ 		EndLineStatusEvent 
-	
-; CheckFramingError:
-	; AND 	AL, LSR_FRAMING_MASK 
-	; CMP 	AL, 0 
-	; JNZ 	EnqueueLSREvent
-	; MOV 	AL, CL 
-	
-; CheckOverrunError: 
-	; AND 	AL, LSR_OVERRUN_MASK 
-	; CMP 	AL,0
-	; JNZ 	EnqueueLSREvent
-	; MOV 	AL, CL 
-	
-; CheckParityError:
-	; AND 	AL, LSR_OVERRUN_MASK
-	; CMP 	AL, 0 
+	AND 	AL, LSR_ERROR_MASK		; use error mask to mask out bits irrelevant 
+									; for error handling
+	CMP 	AL, FALSE 				; check if masked-out-bits were the only 
+									; set bits, if the errors we care about have 
+									; not been triggered
+	JZ 		EndLineStatusEvent		; if so, end LSR event 
+
 	; JNZ 	EnqueueLSREvent
 	
 EnqueueLSREvent:
-	MOV 	AH, LINE_STATUS_EVENT	; 00F0
-	SHR 	AL, 1 					; because you want to get error value smaller, they used to occupy bits 1-3.
-	CALL    EnqueueEvent 
-	;MOV 	AL, CL
-	;JMP 	CheckFramingError
-	
+	MOV 	AH, LINE_STATUS_EVENT	; we actually have bits set in the LSR that 
+									; correspond to errors 
+	SHR 	AL, 1 					; possible errors start at bit 1, so shift 
+									; whole value right by 1 to get possible 
+									; errors between 0 and 15.
+	CALL    EnqueueEvent 			; enqueue error value 
+		
 EndLineStatusEvent:
-	POPA
-	RET 
+	POPA							; restore registers
+	RET 							; and return 
 LineStatus		ENDP 
 
 ;
@@ -664,7 +642,8 @@ LineStatus		ENDP
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
-; Shared Variables: transmitQueue - holds values to be output through the serial channel
+; Shared Variables: transmitQueue (r) - holds values to be output through the serial channel
+; 					kickstart (w) - flags whether or not system needs to be kickstarted 
 ; Global Variables:	None.
 ; 
 ; Input:            None.
@@ -678,28 +657,30 @@ LineStatus		ENDP
 
 	
 TransmitterEmpty 	PROC 	NEAR 
-					PUBLIC 	TransmitterEmpty
 	
 StartTransmitterEmptyEvent:
 	PUSHA
 	
-CheckTransmitQueueNotEmpty: 
+CheckTransmitQueueNotEmpty: 				; check if tx queue is empty 
 	MOV 	SI, OFFSET(transmitQueue)
-	CALL 	QueueEmpty 
-	JZ 		THREmptyAndTransmitQueueEmpty	; when empty, ZF=1
-	JNZ 	THREmptyAndTransmitQueueNotEmpty
+	CALL 	QueueEmpty 						
+	JNZ 	THREmptyAndTransmitQueueNotEmpty; when thr empty, transmit queue not 
+	;JZ 		THREmptyAndTransmitQueueEmpty	; tx queue and thr empty, nothing to do
 	
-THREmptyAndTransmitQueueEmpty: 
-	MOV 	kickstart, IS_SET 			; set kickstart flag 
+THREmptyAndTransmitQueueEmpty: 			; when thr, tx queue empty: 
+										; no values to dequeue, no values to send 
+										; through serial 
+	MOV 	kickstart, TRUE 			; set kickstart flag 
 	JMP 	EndTransmitterEmptyHandler	; and end function 
 	
 THREmptyAndTransmitQueueNotEmpty: 
-	MOV 	SI, OFFSET(transmitQueue)
+	MOV 	SI, OFFSET(transmitQueue)	; dequeue event if transmitQueue not empty
 	CALL 	Dequeue 					
 										; the value dequeued will be in AL
 										
-	MOV 	DX, THR_LOC 	
-	OUT 	DX, AL 
+	MOV 	DX, THR_LOC 		
+	OUT 	DX, AL 						; put dequeued value into transmitter 
+										; holding register ready for serial output
 	; JMP 	EndTransmitterEmptyHandler
 					
 EndTransmitterEmptyHandler:
@@ -714,18 +695,19 @@ TransmitterEmpty	ENDP
 ;
 ;
 ; Description:  	This function is called when there is data available to be
-; 					read or used. We look at the receiver buffer register (RBR)
-; 					and read what's there, and then enqueue this event. 
+; 					read or used from serial. We look at the receiver buffer register 
+; 					(RBR) and read what's there, and then enqueue this event using 
+; 					the data-available event type identifier. 
 ; 
 ; Operation:    	We access the receiver buffer and write that value to the 
-; 					event queue. 
+; 					event queue using EnqueueEvent. 
 ; 
 ; Arguments:        None. 
 ; Return Value:     None.
 ;
 ; Local Variables:  None. 
 ; Shared Variables: None.
-; Global Variables:	eventQueue - queue that stores all events that occur 
+; Global Variables:	None. 
 ; 
 ; Input:            None.
 ; Output:           None.
@@ -736,19 +718,19 @@ TransmitterEmpty	ENDP
 ; Data Structures:  eventQueue - queue that stores all events that occur 
 
 DataAvailable 		PROC 	NEAR 
-					PUBLIC 	DataAvailable
 
 StartDataAvailableEvent:
 	PUSHA 
-	MOV     AX, 0000H           ; CLR(AX)
+	XOR 	AX, AX 					; clear register 
 	
 ReadReceiverBufferRegister: 
 	MOV 	DX, RBR_LOC
 	IN 		AL, DX					; read receiver buffer register 
 
 EnqueueReceivedData: 
-	MOV 	AH, DATA_AVAIL_EVENT
-	CALL 	EnqueueEvent
+	MOV 	AH, DATA_AVAIL_EVENT	; add data available identifier to event
+	CALL 	EnqueueEvent			; enqueue to event queue so we can display
+									; later on 
 				
 EndDataAvailableEvent:
 	POPA
@@ -761,7 +743,6 @@ DataAvailable		ENDP
 ; Tables 
 
 Baud_Rate_Table 	LABEL 	WORD 
-					PUBLIC 	Baud_Rate_Table
 		
 	DW 		480		; 1200 baud  
 	DW 		320		; 1800 baud 
@@ -776,7 +757,6 @@ Baud_Rate_Table 	LABEL 	WORD
 	
 	
 Parity_Table 		LABEL 	BYTE
-					PUBLIC 	Parity_Table
 	
 	DB 		00000000B		; none parity 
 	DB 		00001000B		; odd parity 

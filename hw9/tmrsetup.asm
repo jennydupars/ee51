@@ -11,10 +11,12 @@
 ; and display, the user input and output components of the remote side of the 
 ; Robotrike. We use timer 0 for interrupts, so these functions are for 
 ; initializing timer 0.
+;
 ; The included functions are: 
 ;	Timer0EventHandler - calls CheckKeypadInput and DisplayMux at interrupts 
 ;	InstallTimer0Handler - installs timer event handler for the timer interrupt 
 ; 	InitTimer0 - initializes timer's max counts, EOI, etc 
+; All three functions are public functions.
 
 ; Revision History:
 ;     11/02/16  	Jennifer Du      initial revision

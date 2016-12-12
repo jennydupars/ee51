@@ -82,7 +82,10 @@ CODE    SEGMENT PUBLIC 'CODE'
 ; Return Value:		None. 
 ;
 ; Local Variables:	SI - address of string to be displayed
-; Shared Variables: charDispBuffer - place to store the segment code values  
+; Shared Variables: charDispBuffer (w) - place to store the segment code values 
+;                   scrollCnt 
+;                   stringLength (w)
+;                   scrollPos (w) - position in string to start scrolling display at 
 ; Global Variables: None. 
 ;
 ; Input: 			None. 
@@ -100,59 +103,71 @@ Display         PROC    NEAR
 StartDisplay:
     PUSHA
     
-
     MOV     CX, 0           ; initialize counter for the charDispBuffer
-    MOV     DX, 0           ; count the length OPTIONAL
+    MOV     DX, 0           ; count the length of string 
+    
 CheckEndOfString:
-    XOR     AX,AX					; clear AX
-    MOV     AL, ES:[SI]            ; get value of the first character in the string 
+    XOR     AX, AX					    ; clear AX so AH does not affect index later
+    MOV     AL, ES:[SI]                 ; get value of the 1st character in string
 	INC     SI                          ; move to next character in string
-    INC     DX                  ; OPTIONAL 
-    CMP     AL, ASCII_NULL            ; see if the string has ended (see if the current character is euqal to ASCII_NULL)                        
+    INC     DX                          ; use DX to count length of string 
+    CMP     AL, ASCII_NULL              ; see if the string has ended (see if the
+                                        ; current character is equal to ASCII_NULL)                        
     JE      EndOfString					; if =, jump to end of the string 
     ;JMP    StoreSegTableValue
     
 StoreSegTableValue:
 
-    SHL     AX, 1                       ; multiply the ascii character value by 2 (since each code is 2 bytes long, we wnat to go to 2*ASCII_VAL to get to the right character)
-    MOV     BX, AX                      ; move the ascii value (index in the table) to BX to be accessed soon
+    SHL     AX, 1                       ; multiply the ascii character value by 2 
+                                        ; (since each display code is 2 bytes long, 
+                                        ; we wnat to go to 2*ASCII_VAL to get to 
+                                        ; the right character in the table)
+    MOV     BX, AX                      ; move the ascii value (index in the table) 
+                                        ; to BX to be accessed soon
     
     MOV     AL, CS:ASCIISegTable[BX]    ; move the code values in byte by byte
-    MOV     AH, CS:ASCIISegTable[BX+1]  ; move that in too
+    MOV     AH, CS:ASCIISegTable[BX+1]  
     
-    MOV     BX, CX                  	; move counter for charDispBuffer here
-    MOV     charDispBuffer[BX], AX      ; move value into BX
+    MOV     BX, CX                  	; move index in charDispBuffer here
+    MOV     charDispBuffer[BX], AX      ; move display code value into segBuffer 
     
-    ADD     CX,WORDSIZE
-    CMP     CX, DISPLAY_BUFFER_LENGTH                 ; if we have reached capacity of the segment buffer, they'd be equal
-    JL      CheckEndOfString          ; not equal! -> store more segment table values
-    JGE     EndDisplay                  ; >= means we end this function, buffer can't fit more
+    ADD     CX,WORDSIZE                 ; increment index in charDispBuffer - CX is 
+                                        ; always the location we insert display codes
+                                        ; into
+    CMP     CX, DISPLAY_BUFFER_LENGTH   ; if we have reached capacity of the segment 
+                                        ; buffer, index in display buffer will be 
+                                        ; equal to length of display buffer 
+    JL      CheckEndOfString          	; not equal! -> store more segment table values
+    JGE     EndDisplay                  ; >= end this function, buffer can't fit more
 
-    ;JMP     CheckEndOfString           ; after every increment in the string pointer, see
-                                        ; if we have reached the end of the string.
+    ;JMP     CheckEndOfString           ; after every increment in the string pointer, 
+                                        ; check if we have reached the end of string.
 EndOfString:
     
-    MOV     BX, CX      
+    MOV     BX, CX                      ; move index in character display buffer into 
+                                        ; index register 
     
-    MOV     charDispBuffer[BX], ASCII_NULL   ; store null string in each entry in 
+    MOV     charDispBuffer[BX], ASCII_NULL   ; store null pattern in each entry in 
                                         ; segment buffer
-    ADD     CX, WORDSIZE
+    ADD     CX, WORDSIZE                ; increment index in charDispBuffer
     ;JMP     CheckEndOfBufferAfterString
     
 CheckEndOfBufferAfterString:            ; string is done and we are checking if buffer
                                         ; capacity has been reached
     CMP     CX, DISPLAY_BUFFER_LENGTH
     JL      EndOfString                 ; buffer capacity not reached: add more spaces
-    ;JGE     EndDisplay
+    ;JGE     EndDisplay                 ; buffer capacity reached: move on 
     
-EndDisplay:
-    DEC     DX 
-    MOV     stringLength, DX        ; OPTIONAL
-    MOV     scrollPos, 0            ; OPTIONAL  ; say scrolling position for new string is at 0 
-    MOV     scrollCnt, 0            ; OPTIONAL  ; say scrolling count for new string is at 0 
-    POPA
+EndDisplay:                     ; change variables to be used in next scroll position
+    DEC     DX                      ; decrement stringLength counter to reverse 
+                                    ; extra increment after string ended 
+    MOV     stringLength, DX        ; store string length counted by DX into 
+                                    ; string length
+    MOV     scrollPos, 0            ; set initial scrolling position for new string 
+                                    ; is at 0 
+    MOV     scrollCnt, 0            ; set scrolling count for new string at 0 
+    POPA                    ; restore registers 
     RET                     ; we are done, return
-    
     
 Display ENDP
     
@@ -242,9 +257,9 @@ DisplayHex      PROC    NEAR
     MOV     BX, DS
     MOV     ES, BX
 
-    PUSH SI
+    PUSH SI					; save SI before Hex2String changes it 
 	CALL    Hex2String		; converts number to hex string 
-    POP SI
+    POP SI					; restore SI to be used when calling Display 
     
     CALL    Display 		; displays string on LED display 
 	RET
@@ -284,11 +299,7 @@ StartInitDisplay:
     
     MOV     BX, 0                   ; start counter at 0 (this counter loops 
                                     ; segment buffer and clears each entry)
-                                    
-    MOV     DX, IO_LED_LOC          ; get I/O location of LED display 
-    MOV     AL, IO_LED_VAL          ; get I/O value to write to IO_LED_LOC 
-    OUT     DX, AL                  ; write 0 to I/O location 0FFA4H for display chip select logic
-
+   
 ClearDisplay:                       ;start clearing the display
     MOV     CX, NUM_DIGITS             ;number of digits on display to clear
     MOV     charDispBuffer[BX], LED_BLANK   ; move blank character into each 
@@ -315,21 +326,28 @@ InitDisplay     ENDP
 ;
 ; Description: 		Multiplexer for the display. This procedure multiplexes
 ;					the LED display under interrupt control. It is meant to 
-;					be called at a regular interval of about 1 ms. This 
+;					be called at a regular interval of about 1 ms. This  
 ;					function is going to display 1 digit for 1 instance. 
 ;	
 ; Operation: 		The multiplexer remembers which digit was called last,
-;					by storing and updating the muxCounter variable. Then it 
+;					by storing and updating the currentDispChar variable. Then it
 ;					writes the 14-segment code of the next digit to the
 ;					display at the current digit. One digit is output each time
-;					this function is called.
+;					this function is called. Here we assume that the LED display 
+; 					base address is 00H. 
 ;
 ; Arguments:		None.
 ; Return Value:		None.
 ; Local Variables:	None.
-; Shared Variables: currentDispChar - number that keeps track of which digit is
-;									being displayed
-;					buffer 	   - segment buffer holding segment code values 
+; Shared Variables: currentDispChar (r/w) - number that keeps track of which digit 
+;									is currently being displayed
+;					charDispBuffer (r) - buffer holding 14-segment display code values
+; 					scrollCnt (r/w) - counter that serves as a "max count" for 
+; 						updating the scroll position
+; 					stringLength (r) - length of string being displayed; determines 
+; 						whether we need to scroll or not
+; 					scrollPos (r/w) - current index in string that we start displaying 
+; 						from (left side of display)
 ; Global Variables: None. 
 ; Input:			None. 
 ; Output:			The next digit is output to the display.  
@@ -344,60 +362,80 @@ DisplayMux 			PROC	NEAR
 					PUBLIC	DisplayMux
 	
 StartDisplayMux:					 
-    PUSHA                       ; store registers   
+    PUSHA                       		; save registers   
    
     
-    CMP     stringLength, NUM_DIGITS     ; if string is longer than display,
+    CMP     stringLength, NUM_DIGITS    ; if string is longer than display,
                                         ; we need to scroll.
     JLE     ContinueAsRegular           ; otherwise, continue to display as usual.
     
     ;JG CheckUpdateScrollPos
-CheckUpdateScrollPos: 
+CheckUpdateScrollPos: 	
     INC     scrollCnt                   ; update scroll count - number of muxes it 
-                                        ; takes before we scroll rate 
-    CMP     scrollCnt, SCROLL_POS_MAX_COUNT             ; if we've reached the designated scroll time
-    JE      UpdateScrollPos             ; then we update scroll position 
+                                        ; takes before we change scroll position
+    CMP     scrollCnt, SCROLL_POS_MAX_COUNT             
+										; determine if we've reached the designated 
+										; scroll time (measured in function iterations)
+    JE      UpdateScrollPos             ; update scroll position if we have
     JNE     ContinueAsRegular           ; if not, we continue to display the string
                                         ; from current scroll position
     
-UpdateScrollPos:                        ; reached scroll position updating "max count"
-
-    MOV     scrollCnt, 0                ; reset scroll count for next scroll position 
-    INC     scrollPos                   ; increment scroll position to get display next char in string
+UpdateScrollPos:                        ; reached scroll "max count", update scroll 
+										; position - character in string we start 
+										; display from 
+    MOV     scrollCnt, 0                ; reset scroll count for counting time in 
+										; next scroll position
+    INC     scrollPos                   ; increment scroll position to display 
+										; next char in string as the first one 
     MOV    AX, stringLength             ; compare scroll position to string length 
-    CMP    scrollPos, AX                ; if less, display from current scroll position
-    JLE    ContinueAsRegular
+    CMP    scrollPos, AX                ; if scroll position does not exceed string
+										; length, display from current scroll position
+    JLE    ContinueAsRegular			
      
-    ; if greater:
-    MOV    scrollPos, 0                 ; if scroll position is beyond length of string, reset to 0 to start over on the string
+    ; if greater:						; if scroll position starts to exceed string
+										; length, that doesn't make sense -> make 
+										; scroll position wraparound to front (1st char)
+    MOV    	scrollPos, 0                 
     
 ContinueAsRegular:    
     
-    MOV     BX, currentDispChar
-    ADD     BX, scrollPos   ; OPTIONAL 
-    SHL     BX, 1           ; multiply by 2
+    MOV     BX, currentDispChar			; move currently displayed character index 
+										; into index register 
+    ADD     BX, scrollPos   			; add index in the string to the scroll pos ->
+										; index in the string (BX) is between 0 and 7, 
+										; and is like an "offset" to the "base" index,
+										; scrollPos. 
+    SHL     BX, 1           			; multiply index by 2 since each segment code 
+										; in segBuffer is 2 bytes = 1 word 
     MOV     AX, WORD PTR charDispBuffer[BX]
+										; move segment code into AX 
     
-    XCHG    AH, AL          ; AH becomes the AL
-    MOV     DX, 0008H
-    OUT     DX, AL
+    XCHG    AH, AL          			; AH becomes the AL, want to move upper code 
+										; into higher port location 
+    MOV     DX, HIGH_SEG_CODE_ADDRESS					
+    OUT     DX, AL                      ; display character segment code 
     
-    XCHG    AH, AL          ; AL is restored
+    XCHG    AH, AL                      ; AL is restored, now we put the lower byte 
+                                        ; into the lower address
     
-    ;SHR     BX, 1           ; divide the current segment by 2 to get the LED display number
-    MOV     DX, currentDispChar          ; move address into DX
-    ;ADD     DX, 0000H
-    OUT     DX, AL
+    MOV     DX, currentDispChar         ; move address (index of character to display
+                                        ; in the LED display row) into DX
+    OUT     DX, AL                      ; output this segment pattern code into the
+                                        ; lower byte address, also writes the high 
+                                        ; byte segment pattern to same digit.
     
-IncrementMuxCounter:			; set number to mux next time 
-    MOV     BX, currentDispChar
-    INC     BX
-    MOV     AX, BX
-    MOV 	DX, 0 
-    MOV     CX, NUM_DIGITS         ; get (currentDispChar + 1) mod (number of segments)
-    MOV     DX, 0               ; clear DX before division 
-	DIV     CX                  ; to accoung for mux counter wraparound
-    MOV     currentDispChar, DX
+IncrementMuxCounter:			        ; set character index position at which the 
+                                        ; next character will be muxed next time 
+    MOV     BX, currentDispChar         ; increment currently displayed index 
+    INC     BX                          
+                ; we want to increment the currently displayed character variable 
+                ; and then account for wraparound by the number of LED display digits:
+    MOV     AX, BX                      ; move new index for next time to AX for 
+                                        ; dividing 
+    MOV 	DX, 0                       ; clear DX before division 
+    MOV     CX, NUM_DIGITS              ; get (currentDispChar + 1) mod (number of segments)
+	DIV     CX                  		; to account for mux counter wraparound
+    MOV     currentDispChar, DX			; store next character to be displayed into var 
 	
 EndDisplayMux:
     POPA                        ; restore registers

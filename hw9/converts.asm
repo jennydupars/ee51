@@ -10,6 +10,10 @@
 
 
 ; This file holds the two convert functions: Dec2String, and Hex2String. 
+;  Dec2String - converts a 16-bit number to a string containing its decimal 
+;               representation 
+;  Hex2String - converts a 16-bit number to a string containing its hexadecimal 
+;               representation 
 ;
 ; Revision History:
 ;     10/10/16    Jennifer Du     initial revision
@@ -43,7 +47,7 @@ CODE     SEGMENT  PUBLIC 'CODE'
 ; Arguments:         AX - binary value to convert to decimal.
 ;                    SI - address location to store result.
 ;
-; Return Value:      SI - address location to store result.
+; Return Value:      SI - address location of string 
 ;
 ; Local Variables:   AX - binary value to convert to decimal.
 ;                    SI - string location.
@@ -86,11 +90,6 @@ GetSignOfNumber:
     JS      IfNegative      ; if sign flag set 
     MOV     AX, DX          ; restore argument 
     JMP     ConvertPart
-    ; MOV     DX, AX            ; save AX before you find sign
-    ; AND     AX, TEST1STBIT         ; get first bit
-   ; CMP AX,TEST1STBIT         ; test if first bit =1 or =0
-   ; JZ ifNegative        ; if =1, number is negative
-   ; MOV AX,DX            ; move input value back into AX
 
 IfNegative:
    MOV AX,DX            ; move value back into AX
@@ -99,23 +98,6 @@ IfNegative:
    NEG AX               ; negate binary of AX
    JMP ConvertPart      ; then just convert it
    
-   
-; CheckIterationOfDividing: 
-    ; PUSH    BX      
-; ConvertPart: 
-    ; MOV     DX, 0 
-    ; MOV     CX, 10 
-    ; DIV     CX 
-    ; DEC     BX 
-    ; CMP     BX, 1
-    ; JE      addDigit 
-    ; JNE     ConvertPart 
-    
-   ; convertpart: 
-        ; if b = 4, divide by 1000
-        ; if b = 3, divide by 100
-        ; if b = 2, divide by 10
-        ; if b = 1, 
    
 ConvertPart:
    MOV DX,0            ; clear DX again so DIV can work
